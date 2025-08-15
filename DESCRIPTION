@@ -1,0 +1,33 @@
+Package: rTradingPlots
+Type: Package
+Title: Generate Customizable Interactive Performance Reports for Financial Assets
+Version: 0.0.1
+Authors@R: person(
+    given = "Hugo",
+    family = "Rzepian Teixeira",
+    email = "hugorteixeira@senhormercado.com.br",
+    role = c("aut", "cre"))
+Description: R library for easy, informative trading/backtesting charts in HTML (self-embed option, JPG,  PNG). Custom themes. Integrates with quantstrat/blotter for strategy analysis. Visualize equity curves, market patterns, and performance metrics efficiently.
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.2
+License: GPL (>= 3)
+Imports: 
+    xts,
+    zoo,
+    PerformanceAnalytics,
+    quantmod,
+    highcharter,
+    htmltools,
+    htmlwidgets,
+    jsonlite,
+    magrittr,
+    rlang,
+    shiny,
+    ggplot2,
+    tidyr,
+    scales,
+    gridExtra
+Suggests: 
+    ragg,
+    conflicted
