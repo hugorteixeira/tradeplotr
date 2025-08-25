@@ -509,10 +509,9 @@ fix_pkg <- function(x) {
     if (!is.null(od)) {
       message("Getting data with sm_get_data() for: ", paste(missing_syms, collapse = ", "))
       fetched <- od(missing_syms,
-                    inicio    = init,
-                    final     = finit,
-                    retornar  = TRUE,
-                    auto_rets = auto_rets)
+                    start_date    = init,
+                    end_date     = finit,
+                    auto_returns = auto_rets)
       # ensure names
       if (is.null(names(fetched))) names(fetched) <- missing_syms
       dados_raw <- c(dados_raw, fetched)
