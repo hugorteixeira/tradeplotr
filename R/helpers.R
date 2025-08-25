@@ -1,4 +1,4 @@
-## Data detection helpers (env-first, obter_dados fallback)
+## Data detection helpers (env-first, sm_get_data fallback)
 
 
 #' Get a function by name if it exists in the environment
@@ -501,13 +501,13 @@ fix_pkg <- function(x) {
   env_series <- .find_series_in_env(requested, init, finit)
   missing_syms <- setdiff(unique(requested), names(env_series))
 
-  # 4) obter_dados fallback only for missing names (if any) and if available;
+  # 4) sm_get_data fallback only for missing names (if any) and if available;
   #    then try quantmod::getSymbols as a last resort
-  od <- .get_function_if_exists("obter_dados")
+  od <- .get_function_if_exists("sm_get_data")
   dados_raw <- c(series_map, env_series)
   if (length(missing_syms) > 0) {
     if (!is.null(od)) {
-      message("Getting data with obter_dados() for: ", paste(missing_syms, collapse = ", "))
+      message("Getting data with sm_get_data() for: ", paste(missing_syms, collapse = ", "))
       fetched <- od(missing_syms,
                     inicio    = init,
                     final     = finit,
@@ -517,7 +517,7 @@ fix_pkg <- function(x) {
       if (is.null(names(fetched))) names(fetched) <- missing_syms
       dados_raw <- c(dados_raw, fetched)
     }
-    # After obter_dados, still missing? try quantmod
+    # After sm_get_data, still missing? try quantmod
     still_missing <- setdiff(unique(requested), names(dados_raw))
     if (length(still_missing) > 0) {
       for (sym in still_missing) {
@@ -532,10 +532,10 @@ fix_pkg <- function(x) {
     }
   }
   if (length(dados_raw) == 0) {
-    stop("Could not find data in the envir and could not find data with 'obter_dados' or 'getSymbols()'.")
+    stop("Could not find data in the envir and could not find data with 'sm_get_data' or 'getSymbols()'.")
   }
 
-  # 5) If obter_dados tagged as backtest, try to pick extra pieces from env
+  # 5) If sm_get_data tagged as backtest, try to pick extra pieces from env
   if (is.list(dados_raw) && length(dados_raw) > 0) {
     if (isTRUE(attr(dados_raw[[1]], "backtest"))) {
       message("Processing Backtest")
