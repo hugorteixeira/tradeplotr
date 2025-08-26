@@ -417,14 +417,22 @@ fix_pkg <- function(x) {
 #' @param data_xts A list of xts objects.
 #' @return A single xts object with the calculated returns for all series.
 #' @keywords internal
-.data_prepare <- function(data_xts) {
+.data_prepare <- function(data_xts, verbose = getOption("tplot.verbose", FALSE)) {
+  vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
+  vmsg(sprintf("[.data_prepare] Input items: %d | names=%s",
+               if (is.list(data_xts)) length(data_xts) else 1L,
+               paste(if (is.list(data_xts)) names(data_xts) else "<single>", collapse=",")))
   if (xts::is.xts(data_xts)) data_xts <- list(data_xts)
   if (is.null(names(data_xts))) names(data_xts) <- paste0("Serie", seq_along(data_xts))
 
-  ativos_data <- xts::xts()
+  # Accumulate raw selected price/level columns per series,
+  # then merge once to avoid edge cases with cbind on empty xts
+  ativos_data <- NULL
+  cols_accum  <- list()
   col_names <- character(0)
   use_discrete <- logical(0)
-  per_scales <- character(0)
+  per_scales <- character(0)   # coarse scale from xts::periodicity
+  per_labels <- character(0)   # human-friendly bar size (e.g., 1h, 4h, 1d)
 
   find_col_idx <- function(cols, base_name) {
     idx <- grep(paste0("(^|\\.)", base_name, "$"), cols, ignore.case = TRUE)
@@ -434,7 +442,7 @@ fix_pkg <- function(x) {
   for (i in seq_along(data_xts)) {
     item <- data_xts[[i]]
     item_name <- names(data_xts)[i]
-    # diagnostic message (quiet in normal runs but helpful for debugging)
+    # baseline message (always): which item is being prepared
     message(sprintf("[.data_prepare] %s", item_name))
 
     if (is.null(colnames(item)) || length(colnames(item)) == 0) {
@@ -474,11 +482,49 @@ fix_pkg <- function(x) {
     # record series periodicity (scale can be 'minute','hourly','daily','weekly','monthly',...)
     per <- tryCatch(xts::periodicity(discrete_col)$scale, error = function(e) NA_character_)
     if (is.null(per) || is.na(per)) per <- "unknown"
+    # derive a precise bar label (e.g., 1h vs 4h) for user messages
+    bar_lbl <- tryCatch({
+      sc <- tolower(per)
+      if (sc %in% c("monthly","month","months")) return("1mo")
+      if (sc %in% c("weekly","week","weeks"))   return("1w")
+      if (sc %in% c("quarterly","quarter","quarters")) return("1q")
+      if (sc %in% c("yearly","annual","year","years")) return("1y")
+      if (sc %in% c("daily","day","days"))      return("1d")
+      # for intraday, inspect median step
+      idx_num <- as.numeric(as.POSIXct(index(discrete_col)))
+      step <- suppressWarnings(stats::median(diff(idx_num), na.rm = TRUE))
+      if (!is.finite(step) || is.na(step) || step <= 0) return(sc)
+      if (sc %in% c("hourly","hours","hour")) {
+        h <- max(1, as.integer(round(step / 3600)))
+        return(paste0(h, "h"))
+      }
+      if (sc %in% c("minute","mins","min","minutes")) {
+        m <- max(1, as.integer(round(step / 60)))
+        return(paste0(m, "m"))
+      }
+      sc
+    }, error = function(e) per)
 
-    ativos_data  <- cbind(ativos_data, discrete_col)
+    vmsg(sprintf("[.data_prepare] Added column for %s | rows=%d | periodicity=%s | label=%s",
+                 item_name, NROW(discrete_col), per, bar_lbl))
+    # Ensure the selected column carries the series name now
+    colnames(discrete_col) <- item_name
+    cols_accum[[length(cols_accum) + 1L]] <- discrete_col
     col_names    <- c(col_names, item_name)
     use_discrete <- c(use_discrete, chosen_is_discrete)
     per_scales   <- c(per_scales, per)
+    per_labels   <- c(per_labels, bar_lbl)
+  }
+
+  # Merge accumulated columns (outer join) to create a unified xts
+  if (length(cols_accum) > 0) {
+    if (length(cols_accum) == 1L) {
+      ativos_data <- cols_accum[[1L]]
+    } else {
+      ativos_data <- Reduce(function(a, b) xts::merge(a, b, join = "outer"), cols_accum)
+    }
+  } else {
+    ativos_data <- xts::xts()
   }
 
   if (NCOL(ativos_data) == 0L || NROW(ativos_data) == 0L) {
@@ -486,13 +532,9 @@ fix_pkg <- function(x) {
     return(xts::xts())
   }
 
-  complete_rows <- apply(!is.na(ativos_data), 1, all)
-  if (!any(complete_rows)) {
-    warning("No line with data found in none of the series.")
-    return(xts::xts())
-  }
-  first_complete_row <- which(complete_rows)[1]
-  ativos_data <- ativos_data[first_complete_row:NROW(ativos_data), ]
+  # Do not force full-row overlap at raw level frequency across all series.
+  # Series can start on different dates and have different timestamps; we will
+  # align after computing per-series returns and aggregating to a common scale.
 
   for (i in seq_len(NCOL(ativos_data))) {
     if (use_discrete[i]) {
@@ -512,6 +554,8 @@ fix_pkg <- function(x) {
   for (i in seq_len(NCOL(ativos_data))) {
     if (!use_discrete[i]) {
       ativos_data_returns[, i] <- PerformanceAnalytics::Return.calculate(ativos_data[, i], method = "discrete")
+      vmsg(sprintf("[.data_prepare] Return.calculate(%s) -> rows=%d",
+                   col_names[i], NROW(ativos_data_returns[, i, drop=FALSE])))
     }
   }
   if (NROW(ativos_data_returns) > 0) ativos_data_returns[1, ] <- 0
@@ -551,6 +595,20 @@ fix_pkg <- function(x) {
            years   = "Anual",
            on)
   }
+  .normalize_index <- function(x, on) {
+    # Normalize index to comparable Date stamps across different sources/markets.
+    # This avoids mismatches due to different times-of-day when merging.
+    if (on %in% c("days","day"))   return(as.Date(x))
+    if (on %in% c("weeks","week")) return(as.Date(x))
+    if (on %in% c("months","month")) return(as.Date(zoo::as.yearmon(x), frac = 1))
+    if (on %in% c("quarters","quarter")) return(as.Date(zoo::as.yearqtr(x), frac = 1))
+    if (on %in% c("years","year")) {
+      yy <- format(as.POSIXct(x), "%Y")
+      return(as.Date(zoo::as.yearmon(paste0(yy, "-12")), frac = 1))
+    }
+    as.Date(x)
+  }
+
   .agg_returns <- function(r, on) {
     # r is an xts vector of returns; aggregate by compounding within each period
     if (is.null(r) || NROW(r) == 0) return(r)
@@ -564,7 +622,8 @@ fix_pkg <- function(x) {
       rr  <- rr[is.finite(rr)]
       out_vals[j] <- if (length(rr)) exp(sum(log1p(rr))) - 1 else NA_real_
     }
-    xts::xts(out_vals, order.by = out_idx)
+    out_idx_n <- .normalize_index(out_idx, on)
+    xts::xts(out_vals, order.by = out_idx_n)
   }
 
   # Determine the target (coarsest) periodicity among series; ensure at least 'days'
@@ -574,7 +633,7 @@ fix_pkg <- function(x) {
   target_on  <- .on_from_key(target_key)
 
   # Build user-friendly message if alignment is needed or if intraday found
-  det <- paste(sprintf("%s: %s", col_names, per_scales), collapse = ", ")
+  det <- paste(sprintf("%s: %s", col_names, per_labels), collapse = ", ")
   if (any(keys < 3L)) {
     message(sprintf("[.data_prepare] Detectei série(s) intradiárias (%s). Convertendo para escala %s para compatibilidade de métricas.",
                    paste(col_names[keys < 3L], collapse = ", "), .pretty_scale("days")))
@@ -590,13 +649,31 @@ fix_pkg <- function(x) {
     for (i in seq_len(NCOL(ativos_data_returns))) {
       agg_list[[col_names[i]]] <- .agg_returns(ativos_data_returns[, i, drop = FALSE], target_on)
     }
-    # Merge on index, keep only columns with matching names
-    ativos_data_returns <- do.call(merge, c(agg_list, list(all = FALSE)))
+    # Merge with inner join to keep common dates only
+    if (length(agg_list) == 1L) {
+      ativos_data_returns <- agg_list[[1]]
+    } else {
+      ativos_data_returns <- Reduce(function(a, b) xts::merge(a, b, join = "inner"), agg_list)
+    }
     colnames(ativos_data_returns) <- names(agg_list)
+    vmsg(sprintf("[.data_prepare] Aggregated to %s | rows=%d | cols=%d",
+                 target_on, NROW(ativos_data_returns), NCOL(ativos_data_returns)))
   }
 
-  colnames(ativos_data_returns) <- col_names
-  ativos_data_returns
+  # Ensure column names exist and match column count
+  target_nms <- if (length(col_names) >= NCOL(ativos_data_returns)) col_names[seq_len(NCOL(ativos_data_returns))]
+                else paste0("Serie", seq_len(NCOL(ativos_data_returns)))
+  colnames(ativos_data_returns) <- target_nms
+  vmsg(sprintf("[.data_prepare] Final prepared | rows=%d | cols=%d | names=%s",
+               NROW(ativos_data_returns), NCOL(ativos_data_returns), paste(target_nms, collapse=",")))
+  # Final safety: ensure xts type
+  if (!xts::is.xts(ativos_data_returns) && inherits(ativos_data_returns, "zoo")) {
+    ativos_data_returns <- xts::as.xts(ativos_data_returns)
+  }
+  vmsg(sprintf("[.data_prepare] Returning class=%s | rows=%d | cols=%d",
+               paste(class(ativos_data_returns), collapse=","),
+               NROW(ativos_data_returns), NCOL(ativos_data_returns)))
+  return(ativos_data_returns)
 }
 
 #' Prepares all data and metrics for tplot rendering
@@ -610,7 +687,9 @@ fix_pkg <- function(x) {
 #' @return A large list containing all data and metrics prepared for the modules.
 #' @keywords internal
 .tplot_prepare <- function(ativo, benchs, init, finit, rf_rate, auto_rets = FALSE,
-                           ativo_name = NULL) {
+                           ativo_name = NULL,
+                           verbose = getOption("tplot.verbose", FALSE)) {
+  vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
   # 1) Guarantee Date inputs
   init  <- as.Date(init)
   finit <- as.Date(finit)
@@ -754,28 +833,33 @@ fix_pkg <- function(x) {
   missing_syms <- setdiff(unique(requested), names(env_series))
 
   # 4) sm_get_data fallback only for missing names (if any) and if available;
-  #    then try quantmod::getSymbols as a last resort
+  #    if provider returns unexpected shape, fetch per symbol; then try quantmod
   od <- .get_function_if_exists("sm_get_data")
   dados_raw <- c(series_map, env_series)
   if (length(missing_syms) > 0) {
     if (!is.null(od)) {
       message("Getting data with sm_get_data() for: ", paste(missing_syms, collapse = ", "))
-      fetched <- od(missing_syms,
-                    start_date    = init,
-                    end_date     = finit,
-                    auto_returns = auto_rets)
-      # ensure names only when lengths match and there are elements
-      if (is.list(fetched) && length(fetched) > 0) {
-        if (is.null(names(fetched)) || all(names(fetched) == "")) {
-          if (length(fetched) == length(missing_syms)) names(fetched) <- missing_syms
+      # Fetch per symbol to be robust across providers
+      for (sym in missing_syms) {
+        fetched_one <- tryCatch(od(sym,
+                                   start_date   = init,
+                                   end_date     = finit,
+                                   auto_returns = auto_rets),
+                                error = function(e) NULL)
+        if (.is_xts(fetched_one)) {
+          dados_raw[[sym]] <- .subset_xts(fetched_one, init, finit)
+        } else if (is.list(fetched_one) && length(fetched_one) > 0) {
+          # try to find an xts element; prefer an element explicitly named 'sym'
+          pick <- NULL
+          if (!is.null(names(fetched_one)) && sym %in% names(fetched_one)) {
+            pick <- fetched_one[[sym]]
+          }
+          if (is.null(pick)) {
+            # otherwise first xts element in the list
+            for (el in fetched_one) { if (.is_xts(el)) { pick <- el; break } }
+          }
+          if (.is_xts(pick)) dados_raw[[sym]] <- .subset_xts(pick, init, finit)
         }
-        dados_raw <- c(dados_raw, fetched)
-      } else if (.is_xts(fetched)) {
-        # single xts returned
-        nm <- if (length(missing_syms) >= 1) missing_syms[1] else paste0("Serie", length(dados_raw)+1)
-        tmp <- list(fetched)
-        names(tmp) <- nm
-        dados_raw <- c(dados_raw, tmp)
       }
     }
     # After sm_get_data, still missing? try quantmod
@@ -786,15 +870,22 @@ fix_pkg <- function(x) {
           suppressWarnings(quantmod::getSymbols(sym, from = init, to = finit, auto.assign = FALSE)),
           error = function(e) NULL
         )
-        if (.is_xts(obj)) {
-          dados_raw[[sym]] <- .subset_xts(obj, init, finit)
-        }
+        if (.is_xts(obj)) dados_raw[[sym]] <- .subset_xts(obj, init, finit)
       }
     }
   }
   if (length(dados_raw) == 0) {
     stop("Could not find data in the envir and could not find data with 'sm_get_data' or 'getSymbols()'.")
   }
+  # Inform user about any symbols that could not be fetched
+  have_syms <- names(dados_raw)
+  if (!is.null(have_syms)) {
+    missed <- setdiff(unique(requested), have_syms)
+    if (length(missed) > 0) {
+      message("[.tplot_prepare] Could not fetch data for: ", paste(missed, collapse = ", "))
+    }
+  }
+  vmsg("[.tplot_prepare] Prepared raw series: ", paste(names(dados_raw), collapse = ", "))
 
   # 5) If sm_get_data tagged as backtest, try to pick extra pieces from env
   if (is.list(dados_raw) && length(dados_raw) > 0) {
@@ -849,18 +940,103 @@ fix_pkg <- function(x) {
   }
 
   # 6) Normalize/prepare returns from whatever we have
-  dados_trat <- .data_prepare(dados_raw)
+  dados_trat <- .data_prepare(dados_raw, verbose = verbose)
+  vmsg(sprintf("[.tplot_prepare] .data_prepare class=%s | rows=%s | cols=%s",
+               paste(class(dados_trat), collapse=","),
+               tryCatch(NROW(dados_trat), error=function(e) "?"),
+               tryCatch(NCOL(dados_trat), error=function(e) "?")))
+  # Guarantee xts and column names for downstream operations
+  if (!.is_xts(dados_trat)) {
+    vmsg("[.tplot_prepare] .data_prepare did not return xts; attempting coercion")
+    try_coerce <- try(.to_xts(dados_trat), silent = TRUE)
+    if (.is_xts(try_coerce)) {
+      dados_trat <- try_coerce
+    } else {
+      # Fallback: prepare returns in a minimal, robust way
+      vmsg("[.tplot_prepare] Fallback path: building returns from raw series")
+      build_ret <- function(x) {
+        xx <- .to_xts(x)
+        if (!.is_xts(xx)) return(NULL)
+        # pick Adjusted/Close/first
+        cn <- colnames(xx)
+        pick <- if (length(cn)) {
+          idxA <- grep("(^|\\.)Adjusted$", cn, ignore.case = TRUE)
+          idxC <- grep("(^|\\.)Close$", cn, ignore.case = TRUE)
+          if (length(idxA)) idxA[1] else if (length(idxC)) idxC[1] else 1L
+        } else 1L
+        px <- xx[, pick, drop = FALSE]
+        ret <- try(PerformanceAnalytics::Return.calculate(px, method = "discrete"), silent = TRUE)
+        if (inherits(ret, "try-error")) return(NULL)
+        ret[1, ] <- 0
+        ret
+      }
+      rets <- list()
+      for (nm in names(dados_raw)) {
+        rr <- build_ret(dados_raw[[nm]])
+        if (.is_xts(rr)) { colnames(rr) <- nm; rets[[nm]] <- rr }
+      }
+      if (length(rets) == 0) stop("Prepared data is not an xts time series.")
+      merged <- Reduce(function(a, b) merge.xts(a, b, join = "inner"), rets)
+      # Aggregate to daily by compounding within each day (safe baseline)
+      ep <- tryCatch(xts::endpoints(merged, on = "days"), error = function(e) integer(0))
+      if (length(ep) > 1) {
+        agg <- lapply(seq_len(ncol(merged)), function(j){
+          vals <- merged[, j, drop = FALSE]
+          out  <- vector("numeric", length(ep) - 1L)
+          for (k in seq_len(length(ep) - 1L)) {
+            seg <- vals[(ep[k] + 1L):ep[k + 1L], , drop = FALSE]
+            rr  <- as.numeric(seg)
+            rr  <- rr[is.finite(rr)]
+            out[k] <- if (length(rr)) exp(sum(log1p(rr))) - 1 else NA_real_
+          }
+          xts::xts(out, order.by = as.Date(index(merged)[ep[-1]]))
+        })
+        dados_trat <- Reduce(function(a, b) merge.xts(a, b, join = "inner"), agg)
+        colnames(dados_trat) <- names(rets)
+      } else {
+        dados_trat <- merged
+      }
+    }
+  }
+  if (is.null(colnames(dados_trat)) || length(colnames(dados_trat)) == 0) {
+    # try to adopt names from dados_raw or fallback generic
+    base_nms <- names(dados_raw)
+    if (is.null(base_nms) || length(base_nms) == 0)
+      base_nms <- paste0("Serie", seq_len(NCOL(dados_trat)))
+    colnames(dados_trat) <- base_nms[seq_len(NCOL(dados_trat))]
+  }
   if (NCOL(dados_trat) == 0 || NROW(dados_trat) == 0) {
     stop("Data series could no be prepared (no valid data).")
   }
 
   # 7) Build carteira (ativo + optional benchs)
   benchs_labels <- if (is.character(benchs)) benchs else benchs_names
-  keep_cols <- intersect(colnames(dados_trat), c(ativo_name, benchs_labels))
+  # Case-insensitive match of requested names to prepared columns
+  cols_low <- tolower(colnames(dados_trat))
+  req_low  <- tolower(c(ativo_name, benchs_labels))
+  match_idx <- match(req_low, cols_low, nomatch = 0)
+  keep_cols <- colnames(dados_trat)[match_idx[match_idx > 0]]
   if (length(keep_cols) == 0) {
-    stop("No corresponding series found for ticker calculation.")
+    # Try approximate match by substring (case-insensitive)
+    keep_guess <- character(0)
+    cols_low <- tolower(colnames(dados_trat))
+    for (nm in req_low) {
+      hits <- grep(nm, cols_low, fixed = TRUE)
+      if (length(hits)) keep_guess <- c(keep_guess, colnames(dados_trat)[hits])
+    }
+    keep_guess <- unique(keep_guess)
+    if (length(keep_guess) > 0) {
+      message("[.tplot_prepare] Could not exactly match requested names; using approximate matches: ",
+              paste(keep_guess, collapse = ", "))
+      keep_cols <- keep_guess
+    } else {
+      # Last resort: use whatever we have but inform the user
+      message("[.tplot_prepare] No direct name match. Using all prepared series: ",
+              paste(colnames(dados_trat), collapse = ", "))
+      keep_cols <- colnames(dados_trat)
+    }
   }
-  carteira <- dados_trat[, keep_cols]
+  carteira <- dados_trat[, keep_cols, drop = FALSE]
 
   # 8) Risk-free handling (optional; default to 0 if not available)
   if (!is.null(rf_rate) && rf_rate %in% colnames(dados_trat)) {

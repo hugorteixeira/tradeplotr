@@ -28,7 +28,8 @@ tplot <- function(...,
                   output_dir = "tplots",
                   modules    = c("stats","candles","volume","position","cumulative","rolling",
                                  "period","drawdowns","table","footer"),
-                  theme      = default_theme()) {
+                  theme      = default_theme(),
+                  verbose    = getOption("tplot.verbose", FALSE)) {
   inicio <- Sys.time()
   format  <- match.arg(format)
   user_specified_modules <- !missing(modules)
@@ -142,7 +143,8 @@ tplot <- function(...,
     theme$palette <- colorRampPalette(theme$palette)(n_assets)
 
   prep <- .tplot_prepare(ativo_spec, benchs_spec, init, finit, rf_rate, auto_rets,
-                         ativo_name = ativo_label)
+                         ativo_name = ativo_label,
+                         verbose = verbose)
   preparo <- Sys.time()
   mods_avail <- .available_modules(prep)
   if (!user_specified_modules) {
@@ -210,7 +212,8 @@ tplot_posn <- function(portfolio,
                        output_dir = "tplots",
                        modules    = c("stats","candles","position","cumulative","rolling",
                                       "period","drawdowns","table","footer"),
-                       theme      = default_theme()){
+                       theme      = default_theme(),
+                       verbose    = getOption("tplot.verbose", FALSE)){
   # Provide a hint so .tplot_prepare fetches portfolio-first
   hint <- list(name = as.character(portfolio))
   if (!is.null(symbol)) hint$symbol <- as.character(symbol)
@@ -229,7 +232,7 @@ tplot_posn <- function(portfolio,
   # Dispatch to tplot with the chosen symbol as the first asset
   tplot(chosen_symbol, ..., init = init, finit = finit, rf_rate = rf_rate,
         auto_rets = auto_rets, format = format, output_dir = output_dir,
-        modules = modules, theme = theme)
+        modules = modules, theme = theme, verbose = verbose)
 }
 
 #' @title Launch an Interactive tplot Viewer with Shiny
