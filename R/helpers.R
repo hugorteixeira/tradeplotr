@@ -424,6 +424,7 @@ fix_pkg <- function(x) {
   ativos_data <- xts::xts()
   col_names <- character(0)
   use_discrete <- logical(0)
+  per_scales <- character(0)
 
   find_col_idx <- function(cols, base_name) {
     idx <- grep(paste0("(^|\\.)", base_name, "$"), cols, ignore.case = TRUE)
@@ -470,10 +471,14 @@ fix_pkg <- function(x) {
 
     if (nzchar(chosen_msg)) message(gsub("\n", " ", trimws(chosen_msg)))
     discrete_col <- item[, chosen_idx, drop = FALSE]
+    # record series periodicity (scale can be 'minute','hourly','daily','weekly','monthly',...)
+    per <- tryCatch(xts::periodicity(discrete_col)$scale, error = function(e) NA_character_)
+    if (is.null(per) || is.na(per)) per <- "unknown"
 
     ativos_data  <- cbind(ativos_data, discrete_col)
     col_names    <- c(col_names, item_name)
     use_discrete <- c(use_discrete, chosen_is_discrete)
+    per_scales   <- c(per_scales, per)
   }
 
   if (NCOL(ativos_data) == 0L || NROW(ativos_data) == 0L) {
@@ -510,6 +515,85 @@ fix_pkg <- function(x) {
     }
   }
   if (NROW(ativos_data_returns) > 0) ativos_data_returns[1, ] <- 0
+
+  # ---- Align returns to a common, safe periodicity ----
+  # Map periodicity to an ordered rank and endpoint label
+  .per_key <- function(scale) {
+    s <- tolower(scale %||% "unknown")
+    if (startsWith(s, "min")) return(1L)      # minute
+    if (s %in% c("hourly","hours","hour")) return(2L)
+    if (s %in% c("daily","day","days"))    return(3L)
+    if (s %in% c("weekly","week","weeks")) return(4L)
+    if (s %in% c("monthly","month","months")) return(5L)
+    if (s %in% c("quarterly","quarter","quarters")) return(6L)
+    if (s %in% c("yearly","annual","year","years")) return(7L)
+    3L # default to daily
+  }
+  .on_from_key <- function(k) {
+    switch(as.character(k),
+           `1` = "minutes",
+           `2` = "hours",
+           `3` = "days",
+           `4` = "weeks",
+           `5` = "months",
+           `6` = "quarters",
+           `7` = "years",
+           "days")
+  }
+  .pretty_scale <- function(on) {
+    switch(on,
+           minutes = "Minutos",
+           hours   = "Horas",
+           days    = "Diário",
+           weeks   = "Semanal",
+           months  = "Mensal",
+           quarters= "Trimestral",
+           years   = "Anual",
+           on)
+  }
+  .agg_returns <- function(r, on) {
+    # r is an xts vector of returns; aggregate by compounding within each period
+    if (is.null(r) || NROW(r) == 0) return(r)
+    idx <- tryCatch(xts::endpoints(r, on = on), error = function(e) integer(0))
+    if (length(idx) <= 1) return(r)
+    out_vals <- vector("numeric", length(idx) - 1L)
+    out_idx  <- index(r)[idx[-1]]
+    for (j in seq_len(length(idx) - 1L)) {
+      seg <- r[(idx[j] + 1L):idx[j + 1L], , drop = FALSE]
+      rr  <- as.numeric(seg)
+      rr  <- rr[is.finite(rr)]
+      out_vals[j] <- if (length(rr)) exp(sum(log1p(rr))) - 1 else NA_real_
+    }
+    xts::xts(out_vals, order.by = out_idx)
+  }
+
+  # Determine the target (coarsest) periodicity among series; ensure at least 'days'
+  keys <- vapply(per_scales, .per_key, integer(1))
+  # coarsest = max(key); enforce minimum = 3 (days)
+  target_key <- max(c(3L, keys), na.rm = TRUE)
+  target_on  <- .on_from_key(target_key)
+
+  # Build user-friendly message if alignment is needed or if intraday found
+  det <- paste(sprintf("%s: %s", col_names, per_scales), collapse = ", ")
+  if (any(keys < 3L)) {
+    message(sprintf("[.data_prepare] Detectei série(s) intradiárias (%s). Convertendo para escala %s para compatibilidade de métricas.",
+                   paste(col_names[keys < 3L], collapse = ", "), .pretty_scale("days")))
+  }
+  if (any(keys != target_key)) {
+    message(sprintf("[.data_prepare] Alinhando periodicidade dos retornos -> %s | Detectadas: %s",
+                   .pretty_scale(target_on), det))
+  }
+
+  # If alignment required, aggregate every column to target_on
+  if (any(keys != target_key) || any(keys < 3L)) {
+    agg_list <- list()
+    for (i in seq_len(NCOL(ativos_data_returns))) {
+      agg_list[[col_names[i]]] <- .agg_returns(ativos_data_returns[, i, drop = FALSE], target_on)
+    }
+    # Merge on index, keep only columns with matching names
+    ativos_data_returns <- do.call(merge, c(agg_list, list(all = FALSE)))
+    colnames(ativos_data_returns) <- names(agg_list)
+  }
 
   colnames(ativos_data_returns) <- col_names
   ativos_data_returns
@@ -792,7 +876,21 @@ fix_pkg <- function(x) {
   car_anu    <- Return.annualized(carteira, geometric = auto_rets)
   car_tot    <- Return.cumulative(carteira, geometric = auto_rets)
   car_dd     <- maxDrawdown(carteira)
-  car_sd     <- apply(na.omit(carteira), 2, sd) * sqrt(252)
+  # Annualize SD using detected periodicity of 'carteira'
+  per_card   <- tryCatch(xts::periodicity(carteira)$scale, error = function(e) "daily")
+  scale_fac  <- switch(tolower(per_card),
+                       "daily"   = 252,
+                       "day"     = 252,
+                       "weekly"  = 52,
+                       "week"    = 52,
+                       "monthly" = 12,
+                       "month"   = 12,
+                       "quarterly"= 4,
+                       "quarter" = 4,
+                       "yearly"  = 1,
+                       "annual"  = 1,
+                       252)
+  car_sd     <- apply(na.omit(carteira), 2, sd) * sqrt(scale_fac)
   car_sharpe <- (car_anu - rf_final) / car_sd
   car_sort   <- SortinoRatio(carteira)
   car_sort[is.infinite(car_sort)] <- 0
