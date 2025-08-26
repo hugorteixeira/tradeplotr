@@ -198,7 +198,15 @@ footer_module <- function(theme){
 #' @keywords internal
 candles_module <- function(mktdata, txns, theme){
   comeca <- Sys.time()
-  if (is.null(mktdata) || is.null(txns) || nrow(txns) == 0) return(NULL)
+  # Require valid OHLC market data; transactions are optional
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+  cols_lower <- tolower(colnames(mktdata))
+  has_ohlc <- any(grepl("\\.open$|^open$",   cols_lower)) &&
+              any(grepl("\\.high$|^high$",   cols_lower)) &&
+              any(grepl("\\.low$|^low$",     cols_lower)) &&
+              any(grepl("\\.close$|^close$", cols_lower))
+  if (!has_ohlc) return(NULL)
+  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
 
   ## ---- Paleta de cores
   pal  <- theme$palette
@@ -206,42 +214,45 @@ candles_module <- function(mktdata, txns, theme){
   cory <- pal[3]
   cl   <- theme$colors
 
-  buys  <- txns[ txns$Txn.Qty >  0 , ]
-  sells <- txns[ txns$Txn.Qty <  0 , ]
+  if (has_txns) {
+    buys  <- txns[ txns$Txn.Qty >  0 , ]
+    sells <- txns[ txns$Txn.Qty <  0 , ]
+  }
 
   di_flag       <- isDI(mktdata)
   maturity_date <- attr(mktdata, "maturity")
-
-  if (di_flag && !is.null(maturity_date)){
-    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys),
-                              MoreArgs = list(maturity = maturity_date))
-    sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells),
-                              MoreArgs = list(maturity = maturity_date))
+  if (has_txns && di_flag && !is.null(maturity_date)){
+    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
+    sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))
   }
 
   ## ---- Inverte o sentido para DI
-  if (di_flag){
-    buys_plot  <- sells
-    sells_plot <- buys
-  } else{
-    buys_plot  <- buys
-    sells_plot <- sells
+  if (has_txns) {
+    if (di_flag){
+      buys_plot  <- sells
+      sells_plot <- buys
+    } else{
+      buys_plot  <- buys
+      sells_plot <- sells
+    }
   }
 
-  buys_data <- lapply(seq_len(nrow(buys_plot)), function(i){
-    list(
-      x = as.numeric(as.POSIXct(index(buys_plot)[i])) * 1000,
-      y = as.numeric(buys_plot$Txn.Price[i]),
-      z = as.numeric(buys_plot$Txn.Qty[i])
-    )
-  })
-  sells_data <- lapply(seq_len(nrow(sells_plot)), function(i){
-    list(
-      x = as.numeric(as.POSIXct(index(sells_plot)[i])) * 1000,
-      y = as.numeric(sells_plot$Txn.Price[i]),
-      z = as.numeric(sells_plot$Txn.Qty[i])
-    )
-  })
+  if (has_txns) {
+    buys_data <- lapply(seq_len(nrow(buys_plot)), function(i){
+      list(
+        x = as.numeric(as.POSIXct(index(buys_plot)[i])) * 1000,
+        y = as.numeric(buys_plot$Txn.Price[i]),
+        z = as.numeric(buys_plot$Txn.Qty[i])
+      )
+    })
+    sells_data <- lapply(seq_len(nrow(sells_plot)), function(i){
+      list(
+        x = as.numeric(as.POSIXct(index(sells_plot)[i])) * 1000,
+        y = as.numeric(sells_plot$Txn.Price[i]),
+        z = as.numeric(sells_plot$Txn.Qty[i])
+      )
+    })
+  }
 
   abrev3 <- JS("
   function () {
@@ -281,29 +292,14 @@ candles_module <- function(mktdata, txns, theme){
       margin  = c(theme$hc_margin[1],theme$hc_margin[2],theme$hc_margin[3], theme$hc_margin[4]),
       backgroundColor = cl$chart_bg
     ) %>%
-    hc_add_yAxis(id="a",  startOnTick = FALSE,
-                 endOnTick = FALSE,title = list(text = "Buys and Sells",style = list(
-                   color      = cl$title_txt,
-                   fontFamily = theme$font_family,
-                   fontSize   = paste0(theme$font_sizes$title,"px"),
-                   fontWeight = "bold"
-                 )), labels = list(
-                   formatter = abrev3,
-                   style  = list(
-                     color      = cl$axis_txt,
-                     fontFamily = theme$font_family,
-                     fontSize   = paste0(theme$font_sizes$axis, "px"),
-                     fontWeight = "bold"
-                   )
-                 ),relative = 4,           gridLineColor = "rgba(255,255,255,0.1)",  # Deixa bem claro  # Remove completamente
-                 opposite=FALSE) %>%
     {
       tmp <- .
+      yid <- if (has_txns) "a" else 0
       if ("X.el" %in% names(mktdata)) {
-        tmp <- tmp %>% hc_add_series(round(mktdata$X.el, 3), yAxis = "a", name = "X", color = "darkgray", lineWidth = 1)
+        tmp <- tmp %>% hc_add_series(round(mktdata$X.el, 3), yAxis = yid, name = "X", color = "darkgray", lineWidth = 1)
       }
       if ("Y.el" %in% names(mktdata)) {
-        tmp <- tmp %>% hc_add_series(round(mktdata$Y.el, 3), yAxis = "a", name = "Y", color = "darkgray", lineWidth = 1)
+        tmp <- tmp %>% hc_add_series(round(mktdata$Y.el, 3), yAxis = yid, name = "Y", color = "darkgray", lineWidth = 1)
       }
       tmp
     } %>%
@@ -387,28 +383,6 @@ candles_module <- function(mktdata, txns, theme){
         )
       )
     ) %>%
-    hc_add_series(
-      data = buys_data,
-      type = "scatter",
-      name = "Compras",
-      color = corx,
-      marker = list(enabled = TRUE, symbol = "triangle", radius = 5,
-                    fillColor = corx, lineColor = corx, lineWidth = 2),
-      tooltip = list(headerFormat = "",
-                     pointFormat = "Buy<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"),
-      showInLegend = TRUE
-    ) %>%
-    hc_add_series(
-      data = sells_data,
-      type = "scatter",
-      name = "Vendas",
-      color = cory,
-      marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5,
-                    fillColor = cory, lineColor = cory, lineWidth = 1),
-      tooltip = list(headerFormat = "",
-                     pointFormat = "Sell<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"),
-      showInLegend = TRUE
-    ) %>%
     hc_rangeSelector(enabled = TRUE) %>%
     hc_navigator(
       outlineWidth = 1,
@@ -447,6 +421,49 @@ candles_module <- function(mktdata, txns, theme){
         });
       }
     ")
+
+  # Conditionally add the auxiliary axis and trade markers only when transactions are available
+  if (has_txns) {
+    hc <- hc %>%
+      hc_add_yAxis(id="a",  startOnTick = FALSE,
+                   endOnTick = FALSE,title = list(text = "Buys and Sells",style = list(
+                     color      = cl$title_txt,
+                     fontFamily = theme$font_family,
+                     fontSize   = paste0(theme$font_sizes$title,"px"),
+                     fontWeight = "bold"
+                   )), labels = list(
+                     formatter = abrev3,
+                     style  = list(
+                       color      = cl$axis_txt,
+                       fontFamily = theme$font_family,
+                       fontSize   = paste0(theme$font_sizes$axis, "px"),
+                       fontWeight = "bold"
+                     )
+                   ), relative = 4, gridLineColor = "rgba(255,255,255,0.1)",
+                   opposite=FALSE) %>%
+      hc_add_series(
+        data = buys_data,
+        type = "scatter",
+        name = "Compras",
+        color = corx,
+        marker = list(enabled = TRUE, symbol = "triangle", radius = 5,
+                      fillColor = corx, lineColor = corx, lineWidth = 2),
+        tooltip = list(headerFormat = "",
+                       pointFormat = "Buy<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"),
+        showInLegend = TRUE
+      ) %>%
+      hc_add_series(
+        data = sells_data,
+        type = "scatter",
+        name = "Vendas",
+        color = cory,
+        marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5,
+                      fillColor = cory, lineColor = cory, lineWidth = 1),
+        tooltip = list(headerFormat = "",
+                       pointFormat = "Sell<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"),
+        showInLegend = TRUE
+      )
+  }
 
   termina <- Sys.time()
   message(sprintf("Module 'candles' rendered in %.2f seconds.",

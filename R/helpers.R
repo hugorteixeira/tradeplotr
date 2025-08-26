@@ -577,6 +577,8 @@ fix_pkg <- function(x) {
 
   # 9) Metrics
   car_anu    <- Return.annualized(carteira, geometric = auto_rets)
+  print(auto_rets)
+  auto_rets <<- carteira
   car_tot    <- Return.cumulative(carteira, geometric = auto_rets)
   car_dd     <- maxDrawdown(carteira)
   car_sd     <- apply(na.omit(carteira), 2, sd) * sqrt(252)
