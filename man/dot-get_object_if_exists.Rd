@@ -4,7 +4,7 @@
 \alias{.get_object_if_exists}
 \title{Get an object by name from common environments}
 \usage{
-.get_object_if_exists(name, envs = list(parent.frame(), .GlobalEnv))
+.get_object_if_exists(name, envs = NULL)
 }
 \arguments{
 \item{name}{The name of the object to look for.}

@@ -10,8 +10,8 @@ tplot_interactive(
   finit = Sys.Date(),
   rf_rate = NULL,
   auto_rets = FALSE,
-  modules = c("stats", "candles", "position", "cumulative", "rolling", "period",
-    "drawdowns"),
+  modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
+    "period", "drawdowns"),
   theme = default_theme()
 )
 }

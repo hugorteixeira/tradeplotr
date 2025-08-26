@@ -212,6 +212,44 @@ candles_module <- function(mktdata, txns, theme){
   cory <- pal[3]
   cl   <- theme$colors
 
+  # Resolve candle visual options from theme with safe fallbacks
+  candle_cfg <- if (!is.null(theme$candles)) theme$candles else list()
+  cw    <- if (!is.null(candle_cfg$point_width)) candle_cfg$point_width else 4
+  cgrp  <- isTRUE(candle_cfg$grouping)
+  cup   <- if (!is.null(candle_cfg$up_color))   candle_cfg$up_color   else "#00c176"
+  cdown <- if (!is.null(candle_cfg$down_color)) candle_cfg$down_color else "#ff4d4d"
+  cline <- if (!is.null(candle_cfg$line_color)) candle_cfg$line_color else "#cccccc"
+  clw   <- if (!is.null(candle_cfg$line_width)) candle_cfg$line_width else 1
+  # Range selector styles from theme colors
+  rs_txt  <- if (!is.null(cl$range_selector_txt))    cl$range_selector_txt    else cl$axis_txt
+  rs_fill <- if (!is.null(cl$range_selector_bg))     cl$range_selector_bg     else cl$chart_bg
+  rs_stk  <- if (!is.null(cl$range_selector_border)) cl$range_selector_border else cl$axis_txt
+
+  # Candle style with theme-configurable options (provide safe fallbacks)
+  candle_cfg <- if (!is.null(theme$candles)) theme$candles else list()
+  cw    <- if (!is.null(candle_cfg$point_width)) candle_cfg$point_width else 4
+  cgrp  <- isTRUE(candle_cfg$grouping)
+  cup   <- if (!is.null(candle_cfg$up_color))   candle_cfg$up_color   else "#00c176"
+  cdown <- if (!is.null(candle_cfg$down_color)) candle_cfg$down_color else "#ff4d4d"
+  cline <- if (!is.null(candle_cfg$line_color)) candle_cfg$line_color else "#cccccc"
+  clw   <- if (!is.null(candle_cfg$line_width)) candle_cfg$line_width else 1
+  # Range selector style from theme$colors
+  rs_txt  <- if (!is.null(cl$range_selector_txt))    cl$range_selector_txt    else cl$axis_txt
+  rs_fill <- if (!is.null(cl$range_selector_bg))     cl$range_selector_bg     else cl$chart_bg
+  rs_stk  <- if (!is.null(cl$range_selector_border)) cl$range_selector_border else cl$axis_txt
+  # Candle style with theme fallbacks
+  candle_cfg <- theme$candles %||% list()
+  cw   <- candle_cfg$point_width %||% 4
+  cgrp <- candle_cfg$grouping %||% FALSE
+  cup  <- candle_cfg$up_color %||% "#00c176"
+  cdown<- candle_cfg$down_color %||% "#ff4d4d"
+  cline<- candle_cfg$line_color %||% "#cccccc"
+  clw  <- candle_cfg$line_width %||% 1
+  # Range selector styles
+  rs_txt   <- cl$range_selector_txt %||% cl$axis_txt
+  rs_fill  <- cl$range_selector_bg  %||% cl$chart_bg
+  rs_stk   <- cl$range_selector_border %||% cl$axis_txt
+
   if (has_txns) {
     buys  <- txns[ txns$Txn.Qty >  0 , ]
     sells <- txns[ txns$Txn.Qty <  0 , ]
@@ -486,7 +524,8 @@ volume_module <- function(mktdata, theme){
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = theme$hc_margin,
-      backgroundColor = cl$chart_bg
+      backgroundColor = cl$chart_bg,
+      renderTo = "volume-chart"
     ) %>%
     hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
     hc_yAxis(title = list(text = "Volume", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
@@ -546,12 +585,21 @@ candles_module <- function(mktdata, txns, theme){
     hc_add_yAxis(id = "price", startOnTick = FALSE, endOnTick = FALSE,
                  title = list(text = "Price", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
                  labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
-                 relative = 1, opposite = FALSE) %>%
-    hc_add_series(data = ohlc_data, type = "candlestick", name = "Ativo", yAxis = "price") %>%
-    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = FALSE)), series = list(dataGrouping = list(enabled = FALSE))) %>%
+                 relative = 1, opposite = FALSE)
+
+  # Add candlestick series with pre-evaluated style to avoid NSE scoping issues
+  ohlc_style <- list(upColor = cup, color = cdown, lineColor = cline, lineWidth = clw, pointWidth = cw)
+  hc <- do.call(highcharter::hc_add_series,
+                c(list(hc = hc, data = ohlc_data, type = "candlestick", name = "Ativo", yAxis = "price"),
+                  ohlc_style)) %>%
+    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
              events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('position')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
-    hc_rangeSelector(enabled = TRUE) %>%
+    hc_rangeSelector(enabled = TRUE,
+                     buttonTheme = list(style = list(color = rs_txt), fill = rs_fill, stroke = rs_stk,
+                                        states = list(hover = list(fill = rs_fill, style = list(color = rs_txt)),
+                                                      select = list(fill = rs_fill, style = list(color = rs_txt)))),
+                     inputStyle = list(color = rs_txt), labelStyle = list(color = rs_txt)) %>%
     hc_navigator(outlineWidth = 1, series = list(color = pal[1], lineWidth = 2, type = "areaspline", fillColor = "white"), handles = list(backgroundColor = pal[4], borderColor = pal[3])) %>%
     hc_scrollbar(barBackgroundColor = "lightgray", barBorderRadius = 7, barBorderWidth = 0, buttonBackgroundColor = "lightgray", buttonBorderWidth = 0, buttonArrowColor = "yellow", buttonBorderRadius = 7, rifleColor = "yellow", trackBackgroundColor = "white", trackBorderWidth = 1, trackBorderColor = "silver", trackBorderRadius = 7) %>%
     hc_legend(enabled = FALSE, verticalAlign = "bottom") %>%

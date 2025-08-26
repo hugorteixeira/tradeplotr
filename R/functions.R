@@ -146,7 +146,8 @@ tplot <- function(...,
   preparo <- Sys.time()
   mods_avail <- .available_modules(prep)
   if (!user_specified_modules) {
-    mods_final <- mods_avail
+    priority <- c("stats","candles","volume","position","cumulative","rolling","period","drawdowns","table","footer")
+    mods_final <- intersect(priority, mods_avail)
   } else {
     missing_req <- setdiff(modules, mods_avail)
     if (length(missing_req)) {
