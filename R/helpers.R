@@ -434,6 +434,47 @@ fix_pkg <- function(x) {
   per_scales <- character(0)   # coarse scale from xts::periodicity
   per_labels <- character(0)   # human-friendly bar size (e.g., 1h, 4h, 1d)
 
+  # Infer robust periodicity without calling xts::periodicity (avoid segfaults)
+  .infer_period_info <- function(x_index) {
+    # x_index can be an xts object or a POSIXct/Date vector
+    idx <- x_index
+    if (xts::is.xts(x_index)) idx <- index(x_index)
+    # Default
+    out <- list(scale = "daily", label = "1d", key = 3L)
+    if (inherits(idx, "Date")) return(out)
+    # Try POSIXct
+    if (inherits(idx, "POSIXct") || inherits(idx, "POSIXt")) {
+      secs <- suppressWarnings(as.numeric(idx))
+      d <- suppressWarnings(stats::median(diff(secs), na.rm = TRUE))
+      if (!is.finite(d) || is.na(d) || d <= 0) return(out)
+      # classify by step (seconds)
+      min_s <- 60
+      hour_s <- 3600
+      day_s <- 86400
+      week_s <- day_s * 7
+      month_s <- day_s * 30
+      quarter_s <- day_s * 90
+      if (d < hour_s) {
+        m <- max(1L, as.integer(round(d / min_s)))
+        return(list(scale = "minute", label = paste0(m, "m"), key = 1L))
+      } else if (d < day_s) {
+        h <- max(1L, as.integer(round(d / hour_s)))
+        return(list(scale = "hourly", label = paste0(h, "h"), key = 2L))
+      } else if (d < week_s) {
+        return(list(scale = "daily", label = "1d", key = 3L))
+      } else if (d < month_s) {
+        return(list(scale = "weekly", label = "1w", key = 4L))
+      } else if (d < quarter_s) {
+        return(list(scale = "monthly", label = "1mo", key = 5L))
+      } else if (d < 365 * day_s) {
+        return(list(scale = "quarterly", label = "1q", key = 6L))
+      } else {
+        return(list(scale = "yearly", label = "1y", key = 7L))
+      }
+    }
+    out
+  }
+
   find_col_idx <- function(cols, base_name) {
     idx <- grep(paste0("(^|\\.)", base_name, "$"), cols, ignore.case = TRUE)
     if (length(idx) == 0) NA_integer_ else idx[1]
@@ -479,31 +520,10 @@ fix_pkg <- function(x) {
 
     if (nzchar(chosen_msg)) message(gsub("\n", " ", trimws(chosen_msg)))
     discrete_col <- item[, chosen_idx, drop = FALSE]
-    # record series periodicity (scale can be 'minute','hourly','daily','weekly','monthly',...)
-    per <- tryCatch(xts::periodicity(discrete_col)$scale, error = function(e) NA_character_)
-    if (is.null(per) || is.na(per)) per <- "unknown"
-    # derive a precise bar label (e.g., 1h vs 4h) for user messages
-    bar_lbl <- tryCatch({
-      sc <- tolower(per)
-      if (sc %in% c("monthly","month","months")) return("1mo")
-      if (sc %in% c("weekly","week","weeks"))   return("1w")
-      if (sc %in% c("quarterly","quarter","quarters")) return("1q")
-      if (sc %in% c("yearly","annual","year","years")) return("1y")
-      if (sc %in% c("daily","day","days"))      return("1d")
-      # for intraday, inspect median step
-      idx_num <- as.numeric(as.POSIXct(index(discrete_col)))
-      step <- suppressWarnings(stats::median(diff(idx_num), na.rm = TRUE))
-      if (!is.finite(step) || is.na(step) || step <= 0) return(sc)
-      if (sc %in% c("hourly","hours","hour")) {
-        h <- max(1, as.integer(round(step / 3600)))
-        return(paste0(h, "h"))
-      }
-      if (sc %in% c("minute","mins","min","minutes")) {
-        m <- max(1, as.integer(round(step / 60)))
-        return(paste0(m, "m"))
-      }
-      sc
-    }, error = function(e) per)
+    # Infer periodicity robustly (avoid xts::periodicity)
+    inf <- .infer_period_info(discrete_col)
+    per <- inf$scale
+    bar_lbl <- inf$label
 
     vmsg(sprintf("[.data_prepare] Added column for %s | rows=%d | periodicity=%s | label=%s",
                  item_name, NROW(discrete_col), per, bar_lbl))
@@ -521,7 +541,7 @@ fix_pkg <- function(x) {
     if (length(cols_accum) == 1L) {
       ativos_data <- cols_accum[[1L]]
     } else {
-      ativos_data <- Reduce(function(a, b) xts::merge(a, b, join = "outer"), cols_accum)
+      ativos_data <- Reduce(function(a, b) merge(a, b, join = "outer"), cols_accum)
     }
   } else {
     ativos_data <- xts::xts()
@@ -553,12 +573,23 @@ fix_pkg <- function(x) {
   ativos_data_returns <- ativos_data
   for (i in seq_len(NCOL(ativos_data))) {
     if (!use_discrete[i]) {
-      ativos_data_returns[, i] <- PerformanceAnalytics::Return.calculate(ativos_data[, i], method = "discrete")
+      r_i <- PerformanceAnalytics::Return.calculate(ativos_data[, i], method = "discrete")
+      # Set the very first non-NA return for this column to 0 (do NOT touch global first row)
+      if (NROW(r_i) > 0) {
+        fi <- which(!is.na(r_i[, 1]))
+        if (length(fi)) r_i[fi[1], 1] <- 0
+      }
+      ativos_data_returns[, i] <- r_i
       vmsg(sprintf("[.data_prepare] Return.calculate(%s) -> rows=%d",
-                   col_names[i], NROW(ativos_data_returns[, i, drop=FALSE])))
+                   col_names[i], NROW(r_i)))
+    } else {
+      # For already discrete returns columns, ensure first valid is 0
+      r_i <- ativos_data[, i, drop = FALSE]
+      fi <- which(!is.na(r_i[, 1]))
+      if (length(fi)) r_i[fi[1], 1] <- 0
+      ativos_data_returns[, i] <- r_i
     }
   }
-  if (NROW(ativos_data_returns) > 0) ativos_data_returns[1, ] <- 0
 
   # ---- Align returns to a common, safe periodicity ----
   # Map periodicity to an ordered rank and endpoint label
@@ -653,9 +684,14 @@ fix_pkg <- function(x) {
     if (length(agg_list) == 1L) {
       ativos_data_returns <- agg_list[[1]]
     } else {
-      ativos_data_returns <- Reduce(function(a, b) xts::merge(a, b, join = "inner"), agg_list)
+      ativos_data_returns <- Reduce(function(a, b) merge(a, b, join = "inner"), agg_list)
     }
     colnames(ativos_data_returns) <- names(agg_list)
+    # After aggregation, ensure first valid of each column is 0 again (fresh index)
+    for (j in seq_len(NCOL(ativos_data_returns))) {
+      fi <- which(!is.na(ativos_data_returns[, j]))
+      if (length(fi)) ativos_data_returns[fi[1], j] <- 0
+    }
     vmsg(sprintf("[.data_prepare] Aggregated to %s | rows=%d | cols=%d",
                  target_on, NROW(ativos_data_returns), NCOL(ativos_data_returns)))
   }
@@ -976,7 +1012,7 @@ fix_pkg <- function(x) {
         if (.is_xts(rr)) { colnames(rr) <- nm; rets[[nm]] <- rr }
       }
       if (length(rets) == 0) stop("Prepared data is not an xts time series.")
-      merged <- Reduce(function(a, b) merge.xts(a, b, join = "inner"), rets)
+      merged <- Reduce(function(a, b) merge(a, b, join = "inner"), rets)
       # Aggregate to daily by compounding within each day (safe baseline)
       ep <- tryCatch(xts::endpoints(merged, on = "days"), error = function(e) integer(0))
       if (length(ep) > 1) {
@@ -991,7 +1027,7 @@ fix_pkg <- function(x) {
           }
           xts::xts(out, order.by = as.Date(index(merged)[ep[-1]]))
         })
-        dados_trat <- Reduce(function(a, b) merge.xts(a, b, join = "inner"), agg)
+        dados_trat <- Reduce(function(a, b) merge(a, b, join = "inner"), agg)
         colnames(dados_trat) <- names(rets)
       } else {
         dados_trat <- merged
@@ -1036,7 +1072,16 @@ fix_pkg <- function(x) {
       keep_cols <- colnames(dados_trat)
     }
   }
-  carteira <- dados_trat[, keep_cols, drop = FALSE]
+  # Build two views: full (outer-joined) and common (intersection of all series)
+  carteira_full  <- dados_trat[, keep_cols, drop = FALSE]
+  # Keep only rows where all selected series have data for fair charting/metrics
+  complete_rows  <- apply(!is.na(carteira_full), 1, all)
+  if (!any(complete_rows)) {
+    message("[.tplot_prepare] No overlapping period across selected series; using last non-NA overlaps if available.")
+    carteira <- na.omit(carteira_full)
+  } else {
+    carteira <- carteira_full[complete_rows, , drop = FALSE]
+  }
 
   # 8) Risk-free handling (optional; default to 0 if not available)
   if (!is.null(rf_rate) && rf_rate %in% colnames(dados_trat)) {
@@ -1053,7 +1098,23 @@ fix_pkg <- function(x) {
   car_tot    <- Return.cumulative(carteira, geometric = auto_rets)
   car_dd     <- maxDrawdown(carteira)
   # Annualize SD using detected periodicity of 'carteira'
-  per_card   <- tryCatch(xts::periodicity(carteira)$scale, error = function(e) "daily")
+  # Infer return frequency without xts::periodicity to avoid segfaults
+  infer_sd_scale <- function(x) {
+    idx <- index(x)
+    if (inherits(idx, "Date")) return("daily")
+    if (inherits(idx, "POSIXct") || inherits(idx, "POSIXt")) {
+      d <- suppressWarnings(stats::median(diff(as.numeric(idx)), na.rm = TRUE))
+      day_s <- 86400; week_s <- day_s * 7; month_s <- day_s * 30; quarter_s <- day_s * 90
+      if (!is.finite(d) || is.na(d) || d <= 0) return("daily")
+      if (d < week_s) return("daily")
+      if (d < month_s) return("weekly")
+      if (d < quarter_s) return("monthly")
+      return("quarterly")
+    }
+    # fallback
+    "daily"
+  }
+  per_card   <- infer_sd_scale(carteira)
   scale_fac  <- switch(tolower(per_card),
                        "daily"   = 252,
                        "day"     = 252,
@@ -1097,10 +1158,14 @@ fix_pkg <- function(x) {
   dds     <- Drawdowns(carteira) * 100
   datas   <- as.numeric(as.POSIXct(index(ret_cum))) * 1000
 
-  lista_tabs <- lapply(colnames(carteira), function(x) {
-    rentab_table_calc(carteira[, x], retornar = TRUE, geometric = auto_rets)
+  # Build monthly/annual tables per series using each one's full history
+  lista_tabs <- lapply(colnames(carteira_full), function(x) {
+    serie_x <- carteira_full[, x, drop = FALSE]
+    serie_x <- na.omit(serie_x)
+    if (NROW(serie_x) < 1) return(data.frame())
+    rentab_table_calc(serie_x, retornar = TRUE, geometric = auto_rets)
   })
-  names(lista_tabs) <- colnames(carteira)
+  names(lista_tabs) <- colnames(carteira_full)
 
   resultado <- list(
     ativo       = ativo_name,
