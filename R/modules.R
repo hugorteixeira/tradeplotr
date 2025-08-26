@@ -556,6 +556,18 @@ candles_module <- function(mktdata, txns, theme){
   cory <- pal[3]
   cl   <- theme$colors
 
+  # Candle + range selector style with safe fallbacks
+  candle_cfg <- theme$candles %||% list()
+  cw    <- candle_cfg$point_width %||% 4
+  cgrp  <- candle_cfg$grouping %||% FALSE
+  cup   <- candle_cfg$up_color %||% "#00c176"
+  cdown <- candle_cfg$down_color %||% "#ff4d4d"
+  cline <- candle_cfg$line_color %||% "#cccccc"
+  clw   <- candle_cfg$line_width %||% 1
+  rs_txt  <- cl$range_selector_txt %||% cl$axis_txt
+  rs_fill <- cl$range_selector_bg  %||% cl$chart_bg
+  rs_stk  <- cl$range_selector_border %||% cl$axis_txt
+
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
   if (has_txns) {
     buys  <- txns[ txns$Txn.Qty >  0 , ]

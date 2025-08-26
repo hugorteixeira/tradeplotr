@@ -22,7 +22,7 @@ default_theme <- function(){
       line_color = "#555555",
       line_width = 1,
       point_width= 4,
-      grouping   = FALSE
+      grouping   = TRUE
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
