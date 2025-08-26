@@ -200,12 +200,10 @@ candles_module <- function(mktdata, txns, theme){
   comeca <- Sys.time()
   # Require valid OHLC market data; transactions are optional
   if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
-  cols_lower <- tolower(colnames(mktdata))
-  has_ohlc <- any(grepl("\\.open$|^open$",   cols_lower)) &&
-              any(grepl("\\.high$|^high$",   cols_lower)) &&
-              any(grepl("\\.low$|^low$",     cols_lower)) &&
-              any(grepl("\\.close$|^close$", cols_lower))
-  if (!has_ohlc) return(NULL)
+  # Standardize OHLC column names to ensure hchart candlesticks work reliably
+  std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  mktdata <- std
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
 
   ## ---- Paleta de cores
@@ -285,7 +283,7 @@ candles_module <- function(mktdata, txns, theme){
   }
 ")
 
-  hc <- hchart(mktdata,type = "candlestick",name="Ativo") %>%
+  hc <- hchart(mktdata[, c("Open","High","Low","Close")], type = "candlestick", name = "Ativo") %>%
     hc_size(height = 500) %>%
     hc_chart(
       spacing = theme$hc_spacing,
@@ -468,6 +466,109 @@ candles_module <- function(mktdata, txns, theme){
   termina <- Sys.time()
   message(sprintf("Module 'candles' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
+  hc
+}
+
+# Simplified Volume module (separate from candles)
+#' @keywords internal
+volume_module <- function(mktdata, theme){
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+  std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  if (!("Volume" %in% colnames(std))) return(NULL)
+
+  pal <- theme$palette; cl <- theme$colors
+  idx_ms <- as.numeric(as.POSIXct(index(std))) * 1000
+  vol_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], y = as.numeric(std$Volume[i])) })
+
+  hc <- highcharter::highchart() %>%
+    hc_size(height = 150) %>%
+    hc_chart(
+      spacing = theme$hc_spacing,
+      margin  = theme$hc_margin,
+      backgroundColor = cl$chart_bg
+    ) %>%
+    hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
+    hc_yAxis(title = list(text = "Volume", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
+             labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
+    hc_plotOptions(column = list(dataGrouping = list(enabled = FALSE))) %>%
+    hc_add_series(data = vol_data, type = "column", color = pal[1], name = "Volume", showInLegend = FALSE) %>%
+    hc_xAxis(
+      type = "datetime",
+      events = list(
+        afterSetExtremes = JS(
+          "function(e) { var thisChart = this.chart; if (e.trigger !== 'syncExtremes') { Highcharts.each(Highcharts.charts, function(chart) { if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('position') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('candles'))) { if (chart.xAxis[0].setExtremes) { chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'}); } } }); } }"
+        )
+      )
+    )
+  hc
+}
+
+# Override candles module with axis-safe, volume-free version
+#' @keywords internal
+candles_module <- function(mktdata, txns, theme){
+  comeca <- Sys.time()
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+  std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+
+  pal  <- theme$palette
+  corx <- pal[1]
+  cory <- pal[3]
+  cl   <- theme$colors
+
+  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
+  if (has_txns) {
+    buys  <- txns[ txns$Txn.Qty >  0 , ]
+    sells <- txns[ txns$Txn.Qty <  0 , ]
+  }
+
+  di_flag       <- isDI(std)
+  maturity_date <- attr(std, "maturity")
+  if (has_txns && di_flag && !is.null(maturity_date)){
+    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
+    sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))
+  }
+  if (has_txns) {
+    if (di_flag){ tmp <- buys; buys <- sells; sells <- tmp }
+    buys_data <- lapply(seq_len(nrow(buys)), function(i){ list(x = as.numeric(as.POSIXct(index(buys)[i])) * 1000,  y = as.numeric(buys$Txn.Price[i]),  z = as.numeric(buys$Txn.Qty[i])) })
+    sells_data <- lapply(seq_len(nrow(sells)), function(i){ list(x = as.numeric(as.POSIXct(index(sells)[i])) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i])) })
+  }
+
+  idx_ms <- as.numeric(as.POSIXct(index(std))) * 1000
+  ohlc_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], open = as.numeric(std$Open[i]), high = as.numeric(std$High[i]), low = as.numeric(std$Low[i]), close = as.numeric(std$Close[i])) })
+
+  abrev3 <- JS("function () { var raw=this.value+''; var hasPerc=raw.indexOf('%')!==-1; if(hasPerc) raw=raw.replace('%',''); var v=parseFloat(raw); if(isNaN(v)) return this.value; var neg=v<0?'-':''; v=Math.abs(v); var txt; if(v>=1e6){ txt=(v/1e6).toFixed(v>=1e7?0:1)+'M'; } else if(v>=1e3){ txt=(v/1e3).toFixed(v>=1e4?0:1)+'k'; } else if(v>=100){ txt=v.toFixed(0);} else { txt=v.toFixed(2);} return neg+txt+(hasPerc?'%':''); }")
+
+  hc <- highcharter::highchart() %>%
+    hc_size(height = 500) %>%
+    hc_chart(spacing = theme$hc_spacing, margin = c(theme$hc_margin[1], theme$hc_margin[2], theme$hc_margin[3], theme$hc_margin[4]), backgroundColor = cl$chart_bg, renderTo = "candles-chart") %>%
+    hc_add_yAxis(id = "price", startOnTick = FALSE, endOnTick = FALSE,
+                 title = list(text = "Price", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
+                 labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
+                 relative = 1, opposite = FALSE) %>%
+    hc_add_series(data = ohlc_data, type = "candlestick", name = "Ativo", yAxis = "price") %>%
+    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = FALSE)), series = list(dataGrouping = list(enabled = FALSE))) %>%
+    hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
+             events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('position')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
+    hc_rangeSelector(enabled = TRUE) %>%
+    hc_navigator(outlineWidth = 1, series = list(color = pal[1], lineWidth = 2, type = "areaspline", fillColor = "white"), handles = list(backgroundColor = pal[4], borderColor = pal[3])) %>%
+    hc_scrollbar(barBackgroundColor = "lightgray", barBorderRadius = 7, barBorderWidth = 0, buttonBackgroundColor = "lightgray", buttonBorderWidth = 0, buttonArrowColor = "yellow", buttonBorderRadius = 7, rifleColor = "yellow", trackBackgroundColor = "white", trackBorderWidth = 1, trackBorderColor = "silver", trackBorderRadius = 7) %>%
+    hc_legend(enabled = FALSE, verticalAlign = "bottom") %>%
+    onRender("function(el,x){ Highcharts.setOptions({global:{useUTC:false}}); }")
+
+  if (has_txns) {
+    hc <- hc %>%
+      hc_add_series(data = buys_data, yAxis = "price", type = "scatter", name = "Compras", color = corx,
+                    marker = list(enabled = TRUE, symbol = "triangle", radius = 5, fillColor = corx, lineColor = corx, lineWidth = 2),
+                    tooltip = list(headerFormat = "", pointFormat = "Buy<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE) %>%
+      hc_add_series(data = sells_data, yAxis = "price", type = "scatter", name = "Vendas", color = cory,
+                    marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5, fillColor = cory, lineColor = cory, lineWidth = 1),
+                    tooltip = list(headerFormat = "", pointFormat = "Sell<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE)
+  }
+
+  termina <- Sys.time()
+  message(sprintf("Module 'candles' rendered in %.2f seconds.", as.numeric(difftime(termina, comeca, units = 'secs'))))
   hc
 }
 

@@ -1,4 +1,4 @@
-## Data detection helpers (env-first, sm_get_data fallback)
+## Data detection and sourcing helpers
 
 
 #' Get a function by name if it exists in the environment
@@ -15,10 +15,20 @@
 #' @param envs A list of environments to search in.
 #' @return The object, or NULL if not found.
 #' @keywords internal
-.get_object_if_exists <- function(name, envs = list(parent.frame(), .GlobalEnv)) {
+.get_object_if_exists <- function(name, envs = NULL) {
   # If a concrete object was provided (e.g., xts), just return it
   if (!is.character(name) || length(name) != 1) {
     return(name)
+  }
+  # Build a robust search path across parent frames to handle wrappers
+  if (is.null(envs)) {
+    envs <- list()
+    # search up to 6 parent frames, then .GlobalEnv
+    for (i in 1:6) {
+      ev <- try(parent.frame(i), silent = TRUE)
+      if (!inherits(ev, "try-error") && is.environment(ev)) envs[[length(envs)+1]] <- ev
+    }
+    envs[[length(envs)+1]] <- .GlobalEnv
   }
   for (ev in envs) {
     if (is.environment(ev) && exists(name, envir = ev, inherits = TRUE)) {
@@ -95,8 +105,43 @@
 .is_ohlc_xts <- function(x) {
   if (!.is_xts(x)) return(FALSE)
   cols <- tolower(colnames(x))
-  all(c("open","high","low","close") %in% cols) ||
-    all(c("op","hi","lo","cl") %in% cols)
+  # Handle plain OHLC names and quantmod-style prefixed columns (e.g., TICKER.Open)
+  has_plain <- all(c("open","high","low","close") %in% cols)
+  if (has_plain) return(TRUE)
+  # Prefix-aware: look for ".Open", ".High", ".Low", ".Close"
+  has_pref <- all(vapply(c("\\.open$","\\.high$","\\.low$","\\.close$"),
+                        function(re) any(grepl(re, cols, ignore.case = TRUE)),
+                        logical(1)))
+  has_pref
+}
+
+#' Coerce an xts object to a standard OHLC shape expected by highcharter
+#' Names the columns as Open, High, Low, Close, optionally preserving Volume.
+#' @param x xts object with any OHLC-like column names
+#' @return xts with 4 (or 5 with Volume) columns or NULL if cannot map
+#' @keywords internal
+.to_ohlc_standard <- function(x) {
+  if (!.is_xts(x)) return(NULL)
+  cols <- colnames(x)
+  cl   <- tolower(cols)
+  pick <- function(regex) {
+    idx <- which(grepl(regex, cl, ignore.case = TRUE))
+    if (length(idx)) idx[1] else NA_integer_
+  }
+  io <- pick("(^|\\.)open$")
+  ih <- pick("(^|\\.)high$")
+  il <- pick("(^|\\.)low$")
+  ic <- pick("(^|\\.)close$")
+  iv <- pick("(^|\\.)volume$|(^|\\.)vol$")
+  if (any(is.na(c(io, ih, il, ic)))) return(NULL)
+  ohlc <- x[, c(io, ih, il, ic), drop = FALSE]
+  colnames(ohlc) <- c("Open","High","Low","Close")
+  if (!is.na(iv)) {
+    vol <- x[, iv, drop = FALSE]
+    colnames(vol) <- "Volume"
+    ohlc <- cbind(ohlc, vol)
+  }
+  ohlc
 }
 
 #' Try to interpret a list as a backtest-like object
@@ -116,6 +161,59 @@
     }
   }
   NULL
+}
+
+#' Try to resolve a blotter/quantstrat portfolio by name
+#' @param name Portfolio name (character).
+#' @param init Start date to subset.
+#' @param finit End date to subset.
+#' @return list(mktdata=xts or NULL, trades=xts or NULL, symbol=character) or NULL
+#' @keywords internal
+.quantstrat_portfolio_data <- function(name, init = NULL, finit = NULL){
+  if (is.null(name) || !is.character(name) || length(name) != 1L) return(NULL)
+  getPortfolio <- .get_function_if_exists("getPortfolio")
+  getTxns      <- .get_function_if_exists("getTxns")
+  if (is.null(getPortfolio)) return(NULL)
+  pf <- tryCatch(getPortfolio(name), error = function(e) NULL)
+  if (is.null(pf) || is.null(pf$symbols)) return(NULL)
+  syms <- names(pf$symbols)
+  if (length(syms) == 0) return(NULL)
+  # Prefer a symbol that actually has transactions
+  chosen <- syms[1]
+  if (!is.null(getTxns)) {
+    for (s in syms) {
+      tx_try <- tryCatch(getTxns(Portfolio = name, Symbol = s), error = function(e) NULL)
+      if (.is_xts(tx_try) && NROW(tx_try) > 0) { chosen <- s; break }
+    }
+  }
+  # Get transactions for the chosen symbol if possible
+  trades <- if (!is.null(getTxns)) tryCatch(getTxns(Portfolio = name, Symbol = chosen), error = function(e) NULL) else NULL
+  if (.is_xts(trades)) trades <- .subset_xts(trades, init, finit)
+  # Try to locate OHLC market data in the environment first
+  mktdata <- .get_object_if_exists(chosen)
+  if (.is_xts(mktdata)) mktdata <- .subset_xts(mktdata, init, finit) else mktdata <- NULL
+  # If no suitable OHLC found in env, try user's API, then Yahoo via quantmod
+  if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+    od <- .get_function_if_exists("sm_get_data")
+    if (!is.null(od)) {
+      fetched <- tryCatch(od(chosen, start_date = init, end_date = finit, auto_returns = FALSE), error = function(e) NULL)
+      if (.is_xts(fetched)) {
+        mktdata <- .subset_xts(fetched, init, finit)
+      } else if (is.list(fetched) && length(fetched) > 0) {
+        cand <- fetched[[1]]
+        if (.is_xts(cand)) mktdata <- .subset_xts(cand, init, finit)
+      }
+    }
+  }
+  if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+    # Last resort: Yahoo
+    obj <- tryCatch(
+      suppressWarnings(quantmod::getSymbols(chosen, from = init, to = finit, auto.assign = FALSE)),
+      error = function(e) NULL
+    )
+    if (.is_xts(obj)) mktdata <- .subset_xts(obj, init, finit)
+  }
+  list(mktdata = mktdata, trades = trades, symbol = chosen)
 }
 
 #' Safely subset an xts object by a date range
@@ -178,8 +276,16 @@
   if (!is.null(prep$carteira) && NROW(prep$carteira) > 0) {
     mods <- c(mods, "stats", "cumulative", "rolling", "period", "drawdowns", "table", "footer")
   }
-  if (!is.null(prep$mktdata) && !is.null(prep$trades) && NROW(prep$trades) > 0) {
-    mods <- c(mods, "candles", "position")
+  # Candles is available if we have any OHLC mktdata
+  if (!is.null(prep$mktdata) && .is_xts(prep$mktdata) && .is_ohlc_xts(prep$mktdata)) {
+    mods <- c(mods, "candles")
+    # Volume module if volume present
+    std <- .to_ohlc_standard(prep$mktdata)
+    if (!is.null(std) && "Volume" %in% colnames(std)) mods <- c(mods, "volume")
+  }
+  # Position requires transactions
+  if (!is.null(prep$trades) && .is_xts(prep$trades) && NROW(prep$trades) > 0) {
+    mods <- c(mods, "position")
   }
   unique(mods)
 }
@@ -425,19 +531,70 @@ fix_pkg <- function(x) {
   init  <- as.Date(init)
   finit <- as.Date(finit)
 
-  # 2) Try to find a backtest container either from the object itself or its name
-  bt_env <- .as_backtest(if (!is.character(ativo)) ativo else .get_object_if_exists(ativo))
-  if (!is.null(bt_env)) {
-    mktdata <- bt_env$mktdata %||% NULL
-    trades  <- bt_env$trades  %||% NULL
-    stats   <- bt_env$stats   %||% NULL
-  } else {
-    mktdata <- NULL
-    trades  <- NULL
-    stats   <- NULL
+  # 2) Prefer quantstrat/blotter portfolio data by name (portfolio-first lookup)
+  mktdata <- NULL; trades <- NULL; stats <- NULL
+  # Optional hint provided by wrapper to select a specific portfolio/symbol
+  hint <- getOption("tplot.portfolio_hint", NULL)
+  if (is.list(hint) && is.character(hint$name)) {
+    qs <- .quantstrat_portfolio_data(hint$name, init, finit)
+    if (is.list(qs)) {
+      mktdata <- qs$mktdata %||% NULL
+      trades  <- qs$trades  %||% NULL
+      chosen  <- qs$symbol %||% NULL
+      # If user requested a different symbol explicitly, override
+      if (!is.null(hint$symbol) && is.character(hint$symbol) && length(hint$symbol) == 1) {
+        getTxns <- .get_function_if_exists("getTxns")
+        if (!is.null(getTxns)) {
+          trades2 <- tryCatch(getTxns(Portfolio = hint$name, Symbol = hint$symbol), error = function(e) NULL)
+          if (.is_xts(trades2)) trades <- .subset_xts(trades2, init, finit)
+        }
+        md2 <- .get_object_if_exists(hint$symbol)
+        if (.is_xts(md2)) mktdata <- .subset_xts(md2, init, finit)
+        if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+          # fallback to API then Yahoo
+          od <- .get_function_if_exists("sm_get_data")
+          if (!is.null(od)) {
+            fetched <- tryCatch(od(hint$symbol, start_date = init, end_date = finit, auto_returns = FALSE), error = function(e) NULL)
+            if (.is_xts(fetched)) mktdata <- .subset_xts(fetched, init, finit)
+            else if (is.list(fetched) && length(fetched) > 0 && .is_xts(fetched[[1]])) mktdata <- .subset_xts(fetched[[1]], init, finit)
+          }
+          if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+            obj <- tryCatch(suppressWarnings(quantmod::getSymbols(hint$symbol, from = init, to = finit, auto.assign = FALSE)), error=function(e) NULL)
+            if (.is_xts(obj)) mktdata <- .subset_xts(obj, init, finit)
+          }
+        }
+        chosen <- hint$symbol
+      }
+      if (!is.null(chosen)) {
+        if (is.null(ativo_name) || identical(ativo_name, hint$name)) {
+          ativo_name <- chosen
+        }
+      }
+    }
+  } else if (is.character(ativo) && length(ativo) == 1) {
+    qs <- .quantstrat_portfolio_data(ativo, init, finit)
+    if (is.list(qs)) {
+      mktdata <- qs$mktdata %||% NULL
+      trades  <- qs$trades  %||% NULL
+      # If a portfolio was detected, prefer using the resolved symbol as the label
+      if (!is.null(qs$symbol)) {
+        if (is.null(ativo_name) || identical(ativo_name, ativo)) {
+          ativo_name <- qs$symbol
+        }
+      }
+    }
+  }
+  # If no quantstrat portfolio detected, try a generic backtest object in the env
+  if (is.null(mktdata) && is.null(trades)) {
+    bt_env <- .as_backtest(if (!is.character(ativo)) ativo else .get_object_if_exists(ativo))
+    if (!is.null(bt_env)) {
+      mktdata <- bt_env$mktdata %||% NULL
+      trades  <- bt_env$trades  %||% NULL
+      stats   <- bt_env$stats   %||% NULL
+    }
   }
 
-  # 3) Resolve series map (env-first), supporting xts and data.frame input for 'ativo'
+  # 3) Resolve series map for returns (env-first), with portfolio/backtest awareness
   series_map   <- list()
   requested    <- character(0)
   # ativo can be xts or string name
@@ -448,7 +605,18 @@ fix_pkg <- function(x) {
     series_map[[ativo_name]] <- .subset_xts(at_xts, init, finit)
   } else if (is.character(ativo) && length(ativo) == 1) {
     if (is.null(ativo_name)) ativo_name <- ativo
-    requested <- c(requested, ativo)
+    if (!is.null(mktdata) && .is_xts(mktdata)) {
+      # Portfolio/backtest detected; use its price series directly
+      series_map[[ativo_name]] <- .subset_xts(mktdata, init, finit)
+    } else {
+      requested <- c(requested, ativo)
+    }
+  } else if (!is.null(mktdata) && .is_xts(mktdata)) {
+    # If we detected a backtest with mktdata but 'ativo' isn't an xts/character,
+    # derive a synthetic series for returns from mktdata (Adjusted/Close fallback).
+    # Use the provided label or a default one.
+    if (is.null(ativo_name)) ativo_name <- "Asset"
+    series_map[[ativo_name]] <- .subset_xts(mktdata, init, finit)
   } else {
     stop("Ticker needs to be a name (string) or xts object.")
   }
@@ -512,9 +680,19 @@ fix_pkg <- function(x) {
                     start_date    = init,
                     end_date     = finit,
                     auto_returns = auto_rets)
-      # ensure names
-      if (is.null(names(fetched))) names(fetched) <- missing_syms
-      dados_raw <- c(dados_raw, fetched)
+      # ensure names only when lengths match and there are elements
+      if (is.list(fetched) && length(fetched) > 0) {
+        if (is.null(names(fetched)) || all(names(fetched) == "")) {
+          if (length(fetched) == length(missing_syms)) names(fetched) <- missing_syms
+        }
+        dados_raw <- c(dados_raw, fetched)
+      } else if (.is_xts(fetched)) {
+        # single xts returned
+        nm <- if (length(missing_syms) >= 1) missing_syms[1] else paste0("Serie", length(dados_raw)+1)
+        tmp <- list(fetched)
+        names(tmp) <- nm
+        dados_raw <- c(dados_raw, tmp)
+      }
     }
     # After sm_get_data, still missing? try quantmod
     still_missing <- setdiff(unique(requested), names(dados_raw))
@@ -551,6 +729,41 @@ fix_pkg <- function(x) {
     }
   }
 
+  # 5.1) Choose an OHLC series for the candles module when possible.
+  # Preference order: backtest mktdata (if valid OHLC), then first OHLC among
+  # 'ativo' and 'benchs' (in the order they were provided).
+  if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+    choose_first_ohlc <- function(nm) {
+      if (is.null(nm)) return(NULL)
+      x <- dados_raw[[nm]]
+      if (.is_xts(x) && .is_ohlc_xts(x)) return(.subset_xts(x, init, finit))
+      NULL
+    }
+    # Try the main asset name if it's a string
+    if (is.character(ativo) && length(ativo) == 1) {
+      cand <- choose_first_ohlc(ativo)
+      if (!is.null(cand)) mktdata <- cand
+    } else if (.is_xts(ativo) && .is_ohlc_xts(ativo)) {
+      mktdata <- .subset_xts(.to_xts(ativo), init, finit)
+    }
+    # If still not found, try each benchmark (character names only, in order)
+    if (is.null(mktdata) && !is.null(benchs)) {
+      bench_names <- character(0)
+      if (is.character(benchs)) bench_names <- benchs
+      if (is.list(benchs) && length(benchs) > 0) {
+        for (i in seq_along(benchs)) {
+          if (is.character(benchs[[i]]) && length(benchs[[i]]) == 1) bench_names <- c(bench_names, benchs[[i]])
+        }
+      }
+      if (length(bench_names)) {
+        for (nm in bench_names) {
+          cand <- choose_first_ohlc(nm)
+          if (!is.null(cand)) { mktdata <- cand; break }
+        }
+      }
+    }
+  }
+
   # 6) Normalize/prepare returns from whatever we have
   dados_trat <- .data_prepare(dados_raw)
   if (NCOL(dados_trat) == 0 || NROW(dados_trat) == 0) {
@@ -577,8 +790,6 @@ fix_pkg <- function(x) {
 
   # 9) Metrics
   car_anu    <- Return.annualized(carteira, geometric = auto_rets)
-  print(auto_rets)
-  auto_rets <<- carteira
   car_tot    <- Return.cumulative(carteira, geometric = auto_rets)
   car_dd     <- maxDrawdown(carteira)
   car_sd     <- apply(na.omit(carteira), 2, sd) * sqrt(252)
@@ -704,6 +915,8 @@ fix_pkg <- function(x) {
                  candles    = candles_module(prep$mktdata,
                                              prep$trades,
                                              theme),
+                 volume     = volume_module(prep$mktdata,
+                                            theme),
                  position   = position_module(prep$mktdata,
                                               prep$trades,
                                               theme,
@@ -933,4 +1146,3 @@ fix_pkg <- function(x) {
   message("  Saved chart at: ", fpath)
   return(invisible(fpath))
 }
-

@@ -26,13 +26,14 @@ tplot <- function(...,
                   auto_rets  = FALSE,
                   format     = c("viewer","html","json","png","jpg"),
                   output_dir = "tplots",
-                  modules    = c("stats","candles","position","cumulative","rolling",
+                  modules    = c("stats","candles","volume","position","cumulative","rolling",
                                  "period","drawdowns","table","footer"),
                   theme      = default_theme()) {
   inicio <- Sys.time()
   format  <- match.arg(format)
+  user_specified_modules <- !missing(modules)
   modules <- match.arg(modules, several.ok = TRUE,
-                       choices = c("stats","candles","position","cumulative","rolling",
+                       choices = c("stats","candles","volume","position","cumulative","rolling",
                                    "period","drawdowns","table","footer"))
 
   # Parse variable tickers: first is main (ativo), others are secondary
@@ -144,10 +145,15 @@ tplot <- function(...,
                          ativo_name = ativo_label)
   preparo <- Sys.time()
   mods_avail <- .available_modules(prep)
-  mods_final <- intersect(modules, mods_avail)
-  dropped    <- setdiff(modules, mods_final)
-  if (length(dropped))
-    message("Ignored or unavailable modules: ", paste(dropped, collapse = ", "))
+  if (!user_specified_modules) {
+    mods_final <- mods_avail
+  } else {
+    missing_req <- setdiff(modules, mods_avail)
+    if (length(missing_req)) {
+      stop(sprintf("Requested modules not available: %s", paste(missing_req, collapse = ", ")))
+    }
+    mods_final <- modules
+  }
   if (length(mods_final) == 0)
     stop("No available module for provided data.")
 
@@ -246,7 +252,7 @@ tplot_interactive <- function(...,
                               finit = Sys.Date(),
                               rf_rate = NULL,
                               auto_rets = FALSE,
-                              modules = c("stats","candles","position", "cumulative","rolling", "period","drawdowns"),
+                              modules = c("stats","candles","volume","position", "cumulative","rolling", "period","drawdowns"),
                               theme = default_theme()) {
 
   mc <- match.call(expand.dots = FALSE)
