@@ -4,7 +4,7 @@
 \alias{.data_prepare}
 \title{Prepares raw data by calculating returns}
 \usage{
-.data_prepare(data_xts)
+.data_prepare(data_xts, verbose = getOption("tplot.verbose", FALSE))
 }
 \arguments{
 \item{data_xts}{A list of xts objects.}

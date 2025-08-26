@@ -18,7 +18,8 @@ tplot_posn(
   output_dir = "tplots",
   modules = c("stats", "candles", "position", "cumulative", "rolling", "period",
     "drawdowns", "table", "footer"),
-  theme = default_theme()
+  theme = default_theme(),
+  verbose = getOption("tplot.verbose", FALSE)
 )
 }
 \arguments{

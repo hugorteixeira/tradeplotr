@@ -11,7 +11,8 @@
   finit,
   rf_rate,
   auto_rets = FALSE,
-  ativo_name = NULL
+  ativo_name = NULL,
+  verbose = getOption("tplot.verbose", FALSE)
 )
 }
 \arguments{
