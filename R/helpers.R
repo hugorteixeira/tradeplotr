@@ -290,6 +290,58 @@
   unique(mods)
 }
 
+#' Force an xts index to midnight in a target timezone without shifting dates
+#' @param x xts object to reindex
+#' @param tz_target target timezone label (default 'America/Sao_Paulo')
+#' @param tz_source assumed source timezone for index when deriving the Date (default 'UTC')
+#' @return xts with index set to 00:00 in tz_target for each original Date
+#' @keywords internal
+.force_midnight_tz <- function(x, tz_target = "America/Sao_Paulo", tz_source = "UTC"){
+  if (!.is_xts(x)) return(x)
+  idx <- index(x)
+  # If already Date-based, just coerce to POSIXct midnight in target TZ
+  if (inherits(idx, "Date")) {
+    index(x) <- as.POSIXct(idx, tz = tz_target)
+    attr(index(x), "tzone") <- tz_target
+    return(x)
+  }
+  # Derive calendar date from the original index (interpreting in tz_source),
+  # then assign midnight of that date in tz_target. No time shifting of data.
+  idx_date <- tryCatch(as.Date(idx, tz = tz_source), error = function(e) as.Date(idx))
+  index(x) <- as.POSIXct(idx_date, tz = tz_target)
+  attr(index(x), "tzone") <- tz_target
+  x
+}
+
+#' Fetch quantstrat/blotter portfolio returns and normalize index timezone
+#' @param portfolio character portfolio name
+#' @param init start date
+#' @param finit end date
+#' @param tz_target timezone to force on index midnight (default 'America/Sao_Paulo')
+#' @return xts with a single column of returns, or NULL on failure
+#' @keywords internal
+.get_portfolio_returns <- function(portfolio, init, finit, tz_target = "America/Sao_Paulo"){
+  if (is.null(portfolio) || !is.character(portfolio) || length(portfolio) != 1L) return(NULL)
+  PortfReturns <- .get_function_if_exists("PortfReturns")
+  if (is.null(PortfReturns)) return(NULL)
+  rets <- tryCatch(PortfReturns(portfolio), error = function(e) NULL)
+  if (!.is_xts(rets) || NROW(rets) == 0) return(NULL)
+  rets <- .subset_xts(rets, init, finit)
+  # Coerce to single-column numeric xts if needed
+  if (NCOL(rets) > 1) {
+    # Prefer a column named 'PortfReturns' or similar; otherwise take first
+    cn <- colnames(rets)
+    pick <- which(grepl("portf", tolower(cn)))
+    if (length(pick) == 0) pick <- 1L
+    rets <- rets[, pick, drop = FALSE]
+  }
+  # Force index to midnight in target TZ without shifting date labels
+  rets <- .force_midnight_tz(rets, tz_target = tz_target, tz_source = "UTC")
+  # Name the column as 'Discrete' so .data_prepare treats it as ready returns
+  colnames(rets) <- "Discrete"
+  rets
+}
+
 #' Null-coalescing operator
 #' @description Returns the left-hand side if it's not NULL,
 #' otherwise returns the right-hand side.
@@ -732,6 +784,7 @@ fix_pkg <- function(x) {
 
   # 2) Prefer quantstrat/blotter portfolio data by name (portfolio-first lookup)
   mktdata <- NULL; trades <- NULL; stats <- NULL
+  pf_name <- NULL; port_rets <- NULL
   # Optional hint provided by wrapper to select a specific portfolio/symbol
   hint <- getOption("tplot.portfolio_hint", NULL)
   if (is.list(hint) && is.character(hint$name)) {
@@ -740,6 +793,7 @@ fix_pkg <- function(x) {
       mktdata <- qs$mktdata %||% NULL
       trades  <- qs$trades  %||% NULL
       chosen  <- qs$symbol %||% NULL
+      pf_name <- hint$name
       # If user requested a different symbol explicitly, override
       if (!is.null(hint$symbol) && is.character(hint$symbol) && length(hint$symbol) == 1) {
         getTxns <- .get_function_if_exists("getTxns")
@@ -775,12 +829,20 @@ fix_pkg <- function(x) {
     if (is.list(qs)) {
       mktdata <- qs$mktdata %||% NULL
       trades  <- qs$trades  %||% NULL
+      pf_name <- ativo
       # If a portfolio was detected, prefer using the resolved symbol as the label
       if (!is.null(qs$symbol)) {
         if (is.null(ativo_name) || identical(ativo_name, ativo)) {
           ativo_name <- qs$symbol
         }
       }
+    }
+  }
+  # Try to get backtest returns when a portfolio name is known
+  if (!is.null(pf_name)) {
+    port_rets <- .get_portfolio_returns(pf_name, init, finit, tz_target = "America/Sao_Paulo")
+    if (.is_xts(port_rets) && NROW(port_rets) > 0) {
+      vmsg(sprintf("[.tplot_prepare] Loaded PortfReturns for '%s' | rows=%d", pf_name, NROW(port_rets)))
     }
   }
   # If no quantstrat portfolio detected, try a generic backtest object in the env
@@ -804,8 +866,11 @@ fix_pkg <- function(x) {
     series_map[[ativo_name]] <- .subset_xts(at_xts, init, finit)
   } else if (is.character(ativo) && length(ativo) == 1) {
     if (is.null(ativo_name)) ativo_name <- ativo
-    if (!is.null(mktdata) && .is_xts(mktdata)) {
-      # Portfolio/backtest detected; use its price series directly
+    if (!is.null(port_rets) && .is_xts(port_rets) && NROW(port_rets) > 0) {
+      # Prefer backtest portfolio returns (already discrete)
+      series_map[[ativo_name]] <- port_rets
+    } else if (!is.null(mktdata) && .is_xts(mktdata)) {
+      # Fallback: use price series directly
       series_map[[ativo_name]] <- .subset_xts(mktdata, init, finit)
     } else {
       requested <- c(requested, ativo)
