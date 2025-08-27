@@ -1354,7 +1354,7 @@ fix_pkg <- function(x) {
                  position   = position_module(prep$mktdata,
                                               prep$trades,
                                               theme,
-                                              sync_with_candles),
+                                              FALSE),
                  cumulative = cumret_module(prep$ret_cum,
                                             prep$datas,
                                             prep$ativo,
