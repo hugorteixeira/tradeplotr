@@ -652,6 +652,21 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   if (is.null(mktdata) || is.null(txns) || nrow(txns) == 0)
     return(NULL)
 
+  # Drop known dummy initialization row (e.g., 1950-01-01 with zero qty/value)
+  txns <- try({
+    tx <- txns
+    if (NROW(tx) > 0) {
+      # remove leading rows with zero quantity and very early dates (before 1970)
+      idx <- index(tx)
+      tz0 <- attr(idx, "tzone"); if (is.null(tz0) || !nzchar(tz0)) tz0 <- "UTC"
+      cutoff <- as.POSIXct("1970-01-01 00:00:00", tz = tz0)
+      keep <- (idx >= cutoff) | (abs(suppressWarnings(as.numeric(tx$Txn.Qty))) > 0)
+      if (any(!keep)) tx <- tx[keep]
+    }
+    tx
+  }, silent = TRUE)
+  if (inherits(txns, "try-error") || is.null(txns) || NROW(txns) == 0) return(NULL)
+
   # Build cumulative position series on the transaction timestamps,
   # then align to the union of mktdata and txns indexes to support intraday flips.
   qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
@@ -672,6 +687,8 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   # Reduce to a single column named Pos.Qty
   pos <- pos[, ncol(pos), drop = FALSE]
   colnames(pos) <- "Pos.Qty"
+  # Align display timezone with mktdata (for identical tooltips/labels)
+  try({ attr(index(pos), "tzone") <- attr(index(mktdata), "tzone") }, silent = TRUE)
 
   # Prepare data for chart
   ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
