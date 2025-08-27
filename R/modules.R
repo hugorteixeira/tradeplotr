@@ -645,12 +645,28 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   if (is.null(mktdata) || is.null(txns) || nrow(txns) == 0)
     return(NULL)
 
-  pos <- xts(rep(NA_real_, NROW(mktdata)), order.by = index(mktdata))
-  pos[index(txns)] <- cumsum(txns$Txn.Qty)
+  # Build cumulative position series on the transaction timestamps,
+  # then align to the union of mktdata and txns indexes to support intraday flips.
+  qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
+  if (is.null(qty)) return(NULL)
+  tx_times <- as.POSIXct(index(txns))
+  # cumsum and collapse duplicates at identical timestamps keeping the last cumulative value
+  cumv <- cumsum(qty)
+  df_tx <- data.frame(t = tx_times, cum = cumv)
+  agg <- stats::aggregate(cum ~ t, data = df_tx, FUN = function(v) tail(v, 1))
+  pos_tx <- xts::xts(agg$cum, order.by = agg$t)
+  # Union timeline to cover both candles and txn events
+  combined_idx <- sort(unique(c(index(mktdata), index(pos_tx))))
+  pos_union <- xts::xts(rep(NA_real_, length(combined_idx)), order.by = combined_idx)
+  pos <- merge(pos_union, pos_tx, join = "outer")
+  # carry forward and replace NA with 0 before first transaction
   pos <- zoo::na.locf(pos, na.rm = FALSE)
   pos[is.na(pos)] <- 0
+  # Reduce to a single column named Pos.Qty
+  pos <- pos[, ncol(pos), drop = FALSE]
   colnames(pos) <- "Pos.Qty"
 
+  # Prepare data for chart
   pos_data <- highcharter::list_parse2(
     data.frame(
       x = as.numeric(as.POSIXct(index(pos))) * 1000,
@@ -672,32 +688,32 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
       backgroundColor = theme$colors$chart_bg,
       renderTo        = if (sync_with_candles) "position-chart" else NULL
     ) %>%
-    hc_xAxis(type = "datetime",     lineWidth = 0,    tickLength = 0,labels = list(enabled = FALSE)) %>%
-    hc_yAxis( startOnTick = FALSE,
-              endOnTick = FALSE,
-              title  = list(
-                text  = "Position",
-                style = list(
-                  color      = theme$colors$title_txt,
-                  fontFamily = theme$font_family,
-                  fontSize   = paste0(theme$font_sizes$title, "px"),
-                  fontWeight = "bold"
-                )
-              ),
-              labels = list(
-                style = list(
-                  color      = theme$colors$axis_txt,
-                  fontFamily = theme$font_family,
-                  fontSize   = paste0(theme$font_sizes$axis, "px"),
-                  fontWeight = "bold"
-                )
-              )
+    hc_xAxis(type = "datetime", lineWidth = 0, tickLength = 0, labels = list(enabled = FALSE)) %>%
+    hc_yAxis(startOnTick = FALSE,
+             endOnTick = FALSE,
+             title  = list(
+               text  = "Position",
+               style = list(
+                 color      = theme$colors$title_txt,
+                 fontFamily = theme$font_family,
+                 fontSize   = paste0(theme$font_sizes$title, "px"),
+                 fontWeight = "bold"
+               )
+             ),
+             labels = list(
+               style = list(
+                 color      = theme$colors$axis_txt,
+                 fontFamily = theme$font_family,
+                 fontSize   = paste0(theme$font_sizes$axis, "px"),
+                 fontWeight = "bold"
+               )
+             )
     ) %>%
-    # impede que o Highcharts aglutine barras
-    hc_plotOptions(column = list(dataGrouping = list(enabled = FALSE))) %>%
+    hc_plotOptions(series = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_add_series(
       data         = pos_data,
       type         = "area",
+      step         = "left",
       name         = "Position",
       zones        = zones,
       showInLegend = FALSE

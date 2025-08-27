@@ -52,7 +52,7 @@ tplot <- function(...,
       return(lbl)
     } else {
       seen[[lbl]] <- seen[[lbl]] + 1L
-      return(paste0(lbl, " (", seen[[lbl]], ")"))
+      return(paste0(lbl, "_", seen[[lbl]]))
     }
   }
 
@@ -266,7 +266,7 @@ tplot_interactive <- function(...,
   seen <- new.env(parent = emptyenv())
   next_label <- function(lbl) {
     if (is.null(lbl) || lbl == "") lbl <- "Serie"
-    if (is.null(seen[[lbl]])) { seen[[lbl]] <- 1L; lbl } else { seen[[lbl]] <- seen[[lbl]] + 1L; paste0(lbl, " (", seen[[lbl]], ")") }
+    if (is.null(seen[[lbl]])) { seen[[lbl]] <- 1L; lbl } else { seen[[lbl]] <- seen[[lbl]] + 1L; paste0(lbl, "_", seen[[lbl]]) }
   }
   items <- list()
   add_xts_item <- function(obj, label) {

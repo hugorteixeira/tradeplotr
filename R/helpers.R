@@ -342,6 +342,32 @@
   rets
 }
 
+#' Ensure unique names in a named list by appending _2, _3, ... for duplicates
+#' @param x a named list
+#' @return same list with unique names
+#' @keywords internal
+.uniquify_names <- function(x){
+  nms <- names(x)
+  if (is.null(nms)) return(x)
+  seen <- new.env(parent = emptyenv())
+  new <- character(length(nms))
+  for (i in seq_along(nms)) {
+    base <- nms[i]
+    if (!nzchar(base)) base <- paste0("Serie", i)
+    cnt <- seen[[base]]
+    if (is.null(cnt)) {
+      seen[[base]] <- 1L
+      new[i] <- base
+    } else {
+      cnt <- cnt + 1L
+      seen[[base]] <- cnt
+      new[i] <- paste0(base, "_", cnt)
+    }
+  }
+  names(x) <- new
+  x
+}
+
 #' Null-coalescing operator
 #' @description Returns the left-hand side if it's not NULL,
 #' otherwise returns the right-hand side.
@@ -975,6 +1001,8 @@ fix_pkg <- function(x) {
       }
     }
   }
+  # After fetching all sources, enforce unique names with _2, _3 suffixes for duplicates
+  dados_raw <- .uniquify_names(dados_raw)
   if (length(dados_raw) == 0) {
     stop("Could not find data in the envir and could not find data with 'sm_get_data' or 'getSymbols()'.")
   }
@@ -1110,33 +1138,24 @@ fix_pkg <- function(x) {
     stop("Data series could no be prepared (no valid data).")
   }
 
-  # 7) Build carteira (ativo + optional benchs)
-  benchs_labels <- if (is.character(benchs)) benchs else benchs_names
-  # Case-insensitive match of requested names to prepared columns
-  cols_low <- tolower(colnames(dados_trat))
-  req_low  <- tolower(c(ativo_name, benchs_labels))
-  match_idx <- match(req_low, cols_low, nomatch = 0)
-  keep_cols <- colnames(dados_trat)[match_idx[match_idx > 0]]
-  if (length(keep_cols) == 0) {
-    # Try approximate match by substring (case-insensitive)
-    keep_guess <- character(0)
-    cols_low <- tolower(colnames(dados_trat))
-    for (nm in req_low) {
-      hits <- grep(nm, cols_low, fixed = TRUE)
-      if (length(hits)) keep_guess <- c(keep_guess, colnames(dados_trat)[hits])
-    }
-    keep_guess <- unique(keep_guess)
-    if (length(keep_guess) > 0) {
-      message("[.tplot_prepare] Could not exactly match requested names; using approximate matches: ",
-              paste(keep_guess, collapse = ", "))
-      keep_cols <- keep_guess
-    } else {
-      # Last resort: use whatever we have but inform the user
-      message("[.tplot_prepare] No direct name match. Using all prepared series: ",
-              paste(colnames(dados_trat), collapse = ", "))
-      keep_cols <- colnames(dados_trat)
-    }
+  # 7) Build carteira (ativo + optional benchs) preserving insertion order
+  # Prefer the prepared list order: first is the 'ativo', remainder are benchmarks.
+  # Exclude risk-free (rf_name) if it exists.
+  prepared_order <- names(dados_raw)
+  if (!is.null(rf_name)) {
+    # drop rf_name and any of its suffixed duplicates (e.g., RF_2)
+    rf_regex <- paste0("^", gsub("([.^$|()\[\]{}*+?\\])", "\\\\\\1", rf_name), "(_[0-9]+)?$")
+    prepared_order <- prepared_order[!grepl(rf_regex, prepared_order, ignore.case = TRUE)]
   }
+  # Ensure these columns exist in dados_trat and preserve order
+  keep_cols <- intersect(prepared_order, colnames(dados_trat))
+  if (length(keep_cols) == 0) {
+    message("[.tplot_prepare] No matching prepared columns found; using all prepared series order.")
+    keep_cols <- colnames(dados_trat)
+  }
+  # Update ativo/benchs labels according to unique prepared names
+  ativo_name <- keep_cols[1]
+  benchs_labels <- if (length(keep_cols) > 1) keep_cols[-1] else character(0)
   # Build two views: full (outer-joined) and common (intersection of all series)
   carteira_full  <- dados_trat[, keep_cols, drop = FALSE]
   # Keep only rows where all selected series have data for fair charting/metrics
@@ -1234,7 +1253,7 @@ fix_pkg <- function(x) {
 
   resultado <- list(
     ativo       = ativo_name,
-    benchs      = setdiff(colnames(carteira), ativo_name),
+    benchs      = benchs_labels,
     init_date   = first(index(ret_cum)),
     finit_date  = last(index(ret_cum)),
     carteira    = carteira,
