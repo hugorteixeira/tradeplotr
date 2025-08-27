@@ -1143,9 +1143,8 @@ fix_pkg <- function(x) {
   # Exclude risk-free (rf_name) if it exists.
   prepared_order <- names(dados_raw)
   if (!is.null(rf_name)) {
-    # drop rf_name and any of its suffixed duplicates (e.g., RF_2)
-    rf_regex <- paste0("^", gsub("([.^$|()\[\]{}*+?\\])", "\\\\\\1", rf_name), "(_[0-9]+)?$")
-    prepared_order <- prepared_order[!grepl(rf_regex, prepared_order, ignore.case = TRUE)]
+    rf_regex <- paste0("^", rf_name, "(_[0-9]+)?$")
+    prepared_order <- prepared_order[!grepl(rf_regex, prepared_order)]
   }
   # Ensure these columns exist in dados_trat and preserve order
   keep_cols <- intersect(prepared_order, colnames(dados_trat))
