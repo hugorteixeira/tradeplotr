@@ -237,31 +237,35 @@
 .find_series_in_env <- function(symbols, init, finit) {
   out <- list()
   if (is.null(symbols) || length(symbols) == 0) return(out)
-  for (nm in symbols) {
+  idxs <- seq_along(symbols)
+  for (i in idxs) {
+    nm <- symbols[[i]]
+    label <- names(symbols)[i]
+    if (is.null(label) || !nzchar(label)) label <- if (is.character(nm)) nm else paste0("Serie", i)
     if (is.null(nm)) next
     # allow the user to pass an xts object directly instead of a name
     if (.is_xts(nm)) {
-      out[[deparse(substitute(nm))]] <- .subset_xts(nm, init, finit)
+      out[[label]] <- .subset_xts(nm, init, finit)
       next
     }
     # allow passing data.frame/matrix directly
     if (is.matrix(nm) || is.data.frame(nm) || inherits(nm, "zoo")) {
       conv <- .to_xts(nm)
       if (.is_xts(conv)) {
-        out[[deparse(substitute(nm))]] <- .subset_xts(conv, init, finit)
+        out[[label]] <- .subset_xts(conv, init, finit)
         next
       }
     }
     if (!is.character(nm) || length(nm) != 1) next
     obj <- .get_object_if_exists(nm)
     if (.is_xts(obj)) {
-      out[[nm]] <- .subset_xts(obj, init, finit)
+      out[[label]] <- .subset_xts(obj, init, finit)
     } else if (is.matrix(obj) || is.data.frame(obj) || inherits(obj, "zoo")) {
       conv <- .to_xts(obj)
-      if (.is_xts(conv)) out[[nm]] <- .subset_xts(conv, init, finit)
+      if (.is_xts(conv)) out[[label]] <- .subset_xts(conv, init, finit)
     } else if (is.list(obj) && !is.null(obj$prices) && .is_xts(obj$prices)) {
       # common wrapper structure
-      out[[nm]] <- .subset_xts(obj$prices, init, finit)
+      out[[label]] <- .subset_xts(obj$prices, init, finit)
     }
   }
   out
@@ -956,48 +960,55 @@ fix_pkg <- function(x) {
     }
   }
 
-  env_series <- .find_series_in_env(requested, init, finit)
-  missing_syms <- setdiff(unique(requested), names(env_series))
-
-  # 4) sm_get_data fallback only for missing names (if any) and if available;
-  #    if provider returns unexpected shape, fetch per symbol; then try quantmod
+  # Build unique label->symbol map for requested to preserve duplicates
+  if (length(requested) > 0) {
+    seen_req <- new.env(parent = emptyenv())
+    lbls <- character(length(requested))
+    for (i in seq_along(requested)) {
+      sym <- requested[i]
+      cnt <- seen_req[[sym]]
+      if (is.null(cnt)) { seen_req[[sym]] <- 1L; lbls[i] <- sym } else { cnt <- cnt + 1L; seen_req[[sym]] <- cnt; lbls[i] <- paste0(sym, "_", cnt) }
+    }
+    req_map <- requested
+    names(req_map) <- lbls
+  } else {
+    req_map <- requested
+  }
+  env_series <- .find_series_in_env(req_map, init, finit)
+  # 4) sm_get_data fallback only for missing labels (if any) and if available; then try quantmod
   od <- .get_function_if_exists("sm_get_data")
   dados_raw <- c(series_map, env_series)
-  if (length(missing_syms) > 0) {
+  missing_labels <- setdiff(names(req_map), names(env_series))
+  if (length(missing_labels) > 0) {
     if (!is.null(od)) {
-      message("Getting data with sm_get_data() for: ", paste(missing_syms, collapse = ", "))
-      # Fetch per symbol to be robust across providers
-      for (sym in missing_syms) {
+      message("Getting data with sm_get_data() for: ", paste(unname(req_map[missing_labels]), collapse = ", "))
+      for (lab in missing_labels) {
+        sym <- unname(req_map[lab])
         fetched_one <- tryCatch(od(sym,
                                    start_date   = init,
                                    end_date     = finit,
                                    auto_returns = auto_rets),
                                 error = function(e) NULL)
         if (.is_xts(fetched_one)) {
-          dados_raw[[sym]] <- .subset_xts(fetched_one, init, finit)
+          dados_raw[[lab]] <- .subset_xts(fetched_one, init, finit)
         } else if (is.list(fetched_one) && length(fetched_one) > 0) {
-          # try to find an xts element; prefer an element explicitly named 'sym'
           pick <- NULL
-          if (!is.null(names(fetched_one)) && sym %in% names(fetched_one)) {
-            pick <- fetched_one[[sym]]
-          }
-          if (is.null(pick)) {
-            # otherwise first xts element in the list
-            for (el in fetched_one) { if (.is_xts(el)) { pick <- el; break } }
-          }
-          if (.is_xts(pick)) dados_raw[[sym]] <- .subset_xts(pick, init, finit)
+          if (!is.null(names(fetched_one)) && sym %in% names(fetched_one)) pick <- fetched_one[[sym]]
+          if (is.null(pick)) { for (el in fetched_one) { if (.is_xts(el)) { pick <- el; break } } }
+          if (.is_xts(pick)) dados_raw[[lab]] <- .subset_xts(pick, init, finit)
         }
       }
     }
     # After sm_get_data, still missing? try quantmod
-    still_missing <- setdiff(unique(requested), names(dados_raw))
+    still_missing <- setdiff(names(req_map), names(dados_raw))
     if (length(still_missing) > 0) {
-      for (sym in still_missing) {
+      for (lab in still_missing) {
+        sym <- unname(req_map[lab])
         obj <- tryCatch(
           suppressWarnings(quantmod::getSymbols(sym, from = init, to = finit, auto.assign = FALSE)),
           error = function(e) NULL
         )
-        if (.is_xts(obj)) dados_raw[[sym]] <- .subset_xts(obj, init, finit)
+        if (.is_xts(obj)) dados_raw[[lab]] <- .subset_xts(obj, init, finit)
       }
     }
   }
@@ -1009,9 +1020,10 @@ fix_pkg <- function(x) {
   # Inform user about any symbols that could not be fetched
   have_syms <- names(dados_raw)
   if (!is.null(have_syms)) {
-    missed <- setdiff(unique(requested), have_syms)
+    ref_map <- if (exists("req_map")) req_map else setNames(requested, requested)
+    missed <- setdiff(names(ref_map), have_syms)
     if (length(missed) > 0) {
-      message("[.tplot_prepare] Could not fetch data for: ", paste(missed, collapse = ", "))
+      message("[.tplot_prepare] Could not fetch data for: ", paste(unname(ref_map[missed]), collapse = ", "))
     }
   }
   vmsg("[.tplot_prepare] Prepared raw series: ", paste(names(dados_raw), collapse = ", "))

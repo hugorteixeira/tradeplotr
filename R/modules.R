@@ -203,6 +203,8 @@ candles_module <- function(mktdata, txns, theme){
   # Standardize OHLC column names to ensure hchart candlesticks work reliably
   std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
   if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  # Deduplicate repeated timestamps (keep last occurrence)
+  std <- std[!duplicated(index(std), fromLast = TRUE), ]
   mktdata <- std
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
 
@@ -276,14 +278,14 @@ candles_module <- function(mktdata, txns, theme){
   if (has_txns) {
     buys_data <- lapply(seq_len(nrow(buys_plot)), function(i){
       list(
-        x = as.numeric(as.POSIXct(index(buys_plot)[i])) * 1000,
+        x = as.numeric(index(buys_plot)[i]) * 1000,
         y = as.numeric(buys_plot$Txn.Price[i]),
         z = as.numeric(buys_plot$Txn.Qty[i])
       )
     })
     sells_data <- lapply(seq_len(nrow(sells_plot)), function(i){
       list(
-        x = as.numeric(as.POSIXct(index(sells_plot)[i])) * 1000,
+        x = as.numeric(index(sells_plot)[i]) * 1000,
         y = as.numeric(sells_plot$Txn.Price[i]),
         z = as.numeric(sells_plot$Txn.Qty[i])
       )
@@ -513,10 +515,14 @@ volume_module <- function(mktdata, theme){
   if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
   std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
   if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  # Deduplicate repeated timestamps (keep last occurrence)
+  std <- std[!duplicated(index(std), fromLast = TRUE), ]
+  # Deduplicate repeated timestamps (keep last)
+  std <- std[!duplicated(index(std), fromLast = TRUE), ]
   if (!("Volume" %in% colnames(std))) return(NULL)
 
   pal <- theme$palette; cl <- theme$colors
-  idx_ms <- as.numeric(as.POSIXct(index(std))) * 1000
+  idx_ms <- as.numeric(index(std)) * 1000
   vol_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], y = as.numeric(std$Volume[i])) })
 
   hc <- highcharter::highchart() %>%
@@ -582,11 +588,11 @@ candles_module <- function(mktdata, txns, theme){
   }
   if (has_txns) {
     if (di_flag){ tmp <- buys; buys <- sells; sells <- tmp }
-    buys_data <- lapply(seq_len(nrow(buys)), function(i){ list(x = as.numeric(as.POSIXct(index(buys)[i])) * 1000,  y = as.numeric(buys$Txn.Price[i]),  z = as.numeric(buys$Txn.Qty[i])) })
-    sells_data <- lapply(seq_len(nrow(sells)), function(i){ list(x = as.numeric(as.POSIXct(index(sells)[i])) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i])) })
+    buys_data <- lapply(seq_len(nrow(buys)), function(i){ list(x = as.numeric(index(buys)[i]) * 1000,  y = as.numeric(buys$Txn.Price[i]),  z = as.numeric(buys$Txn.Qty[i])) })
+    sells_data <- lapply(seq_len(nrow(sells)), function(i){ list(x = as.numeric(index(sells)[i]) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i])) })
   }
 
-  idx_ms <- as.numeric(as.POSIXct(index(std))) * 1000
+  idx_ms <- as.numeric(index(std)) * 1000
   ohlc_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], open = as.numeric(std$Open[i]), high = as.numeric(std$High[i]), low = as.numeric(std$Low[i]), close = as.numeric(std$Close[i])) })
 
   abrev3 <- JS("function () { var raw=this.value+''; var hasPerc=raw.indexOf('%')!==-1; if(hasPerc) raw=raw.replace('%',''); var v=parseFloat(raw); if(isNaN(v)) return this.value; var neg=v<0?'-':''; v=Math.abs(v); var txt; if(v>=1e6){ txt=(v/1e6).toFixed(v>=1e7?0:1)+'M'; } else if(v>=1e3){ txt=(v/1e3).toFixed(v>=1e4?0:1)+'k'; } else if(v>=100){ txt=v.toFixed(0);} else { txt=v.toFixed(2);} return neg+txt+(hasPerc?'%':''); }")
@@ -649,7 +655,7 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   # then align to the union of mktdata and txns indexes to support intraday flips.
   qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
   if (is.null(qty)) return(NULL)
-  tx_times <- as.POSIXct(index(txns))
+  tx_times <- index(txns)
   # cumsum and collapse duplicates at identical timestamps keeping the last cumulative value
   cumv <- cumsum(qty)
   df_tx <- data.frame(t = tx_times, cum = cumv)
@@ -669,7 +675,7 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   # Prepare data for chart
   pos_data <- highcharter::list_parse2(
     data.frame(
-      x = as.numeric(as.POSIXct(index(pos))) * 1000,
+      x = as.numeric(index(pos)) * 1000,
       y = as.numeric(coredata(pos))
     )
   )
