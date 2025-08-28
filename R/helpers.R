@@ -132,10 +132,21 @@
   ih <- pick("(^|\\.)high$")
   il <- pick("(^|\\.)low$")
   ic <- pick("(^|\\.)close$")
+  ia <- pick("(^|\\.)adjust(ed)?$")
   iv <- pick("(^|\\.)volume$|(^|\\.)vol$")
-  if (any(is.na(c(io, ih, il, ic)))) return(NULL)
-  ohlc <- x[, c(io, ih, il, ic), drop = FALSE]
-  colnames(ohlc) <- c("Open","High","Low","Close")
+  # If full OHLC exists, just map
+  if (!any(is.na(c(io, ih, il, ic)))) {
+    ohlc <- x[, c(io, ih, il, ic), drop = FALSE]
+    colnames(ohlc) <- c("Open","High","Low","Close")
+  } else {
+    # Fallback: synthesize OHLC from a single price column (Close/Adjusted/first)
+    base_idx <- if (!is.na(ic)) ic else if (!is.na(ia)) ia else 1L
+    if (is.na(base_idx) || base_idx < 1L || base_idx > NCOL(x)) return(NULL)
+    px <- x[, base_idx, drop = FALSE]
+    colnames(px) <- "Close"
+    ohlc <- cbind(px, px, px, px)
+    colnames(ohlc) <- c("Open","High","Low","Close")
+  }
   if (!is.na(iv)) {
     vol <- x[, iv, drop = FALSE]
     colnames(vol) <- "Volume"
@@ -149,18 +160,51 @@
 #' @return A list with mktdata, trades, and stats, or NULL.
 #' @keywords internal
 .as_backtest <- function(obj) {
-  if (is.list(obj)) {
-    has_mkt <- !is.null(obj$mktdata) && .is_xts(obj$mktdata)
-    has_txn <- !is.null(obj$trades)  && .is_xts(obj$trades)
-    if (has_mkt && has_txn) {
-      return(list(
-        mktdata = obj$mktdata,
-        trades  = obj$trades,
-        stats   = obj$stats %||% NULL
-      ))
+  if (!is.list(obj)) return(NULL)
+  # Normalize mktdata
+  md <- NULL
+  if (!is.null(obj$mktdata)) {
+    md <- .to_xts(obj$mktdata)
+    if (!.is_xts(md)) md <- NULL
+  }
+  # Normalize trades to xts if possible
+  tx <- NULL
+  if (!is.null(obj$trades)) {
+    if (.is_xts(obj$trades)) {
+      tx <- obj$trades
+    } else if (is.data.frame(obj$trades)) {
+      df <- obj$trades
+      # Try to locate time and needed columns
+      cn <- tolower(colnames(df))
+      time_col <- which(cn %in% c("time","date","datetime","txn.date","timestamp"))
+      if (length(time_col) > 0) {
+        idx <- df[[time_col[1]]]
+        df[[time_col[1]]] <- NULL
+        tx_try <- .to_xts(cbind(df))
+        if (.is_xts(tx_try)) tx <- tx_try
+      }
     }
   }
-  NULL
+  # Normalize returns (prefer 'rets' over 'rets_acct')
+  rt <- NULL
+  cand <- NULL
+  if (!is.null(obj$rets)) cand <- obj$rets else if (!is.null(obj$rets_acct)) cand <- obj$rets_acct
+  if (!is.null(cand)) {
+    cand_xts <- .to_xts(cand)
+    if (.is_xts(cand_xts)) {
+      # Ensure single column named 'Discrete' so .data_prepare does not recalc
+      if (NCOL(cand_xts) > 1L) cand_xts <- cand_xts[, 1, drop = FALSE]
+      colnames(cand_xts) <- "Discrete"
+      rt <- cand_xts
+    }
+  }
+  if (is.null(md) && is.null(tx) && is.null(rt) && is.null(obj$stats)) return(NULL)
+  list(
+    mktdata = md,
+    trades  = tx,
+    stats   = obj$stats %||% NULL,
+    rets    = rt
+  )
 }
 
 #' Try to resolve a blotter/quantstrat portfolio by name
@@ -187,11 +231,31 @@
     }
   }
   # Get transactions for the chosen symbol if possible
-  trades <- if (!is.null(getTxns)) tryCatch(getTxns(Portfolio = name, Symbol = chosen), error = function(e) NULL) else NULL
+  trades <- NULL
+  if (!is.null(getTxns)) {
+    trades <- tryCatch(getTxns(Portfolio = name, Symbol = chosen), error = function(e) NULL)
+  }
+  # If getTxns failed, try to pull directly from portfolio object
+  if (is.null(trades) && !is.null(pf$symbols[[chosen]]$txn)) {
+    trades <- tryCatch(pf$symbols[[chosen]]$txn, error = function(e) NULL)
+  }
   if (.is_xts(trades)) trades <- .subset_xts(trades, init, finit)
   # Try to locate OHLC market data in the environment first
-  mktdata <- .get_object_if_exists(chosen)
-  if (.is_xts(mktdata)) mktdata <- .subset_xts(mktdata, init, finit) else mktdata <- NULL
+  raw_obj <- .get_object_if_exists(chosen)
+  mktdata <- NULL
+  if (!is.null(raw_obj)) {
+    # Try direct xts conversion first
+    conv <- .to_xts(raw_obj)
+    if (.is_xts(conv)) mktdata <- .subset_xts(conv, init, finit)
+    # If still not xts, try quantmod::getPrice
+    if (is.null(mktdata)) {
+      gp <- .get_function_if_exists("getPrice")
+      if (!is.null(gp)) {
+        px <- tryCatch(gp(raw_obj), error = function(e) NULL)
+        if (.is_xts(px)) mktdata <- .subset_xts(px, init, finit)
+      }
+    }
+  }
   # If no suitable OHLC found in env, try user's API, then Yahoo via quantmod
   if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
     od <- .get_function_if_exists("sm_get_data")
@@ -280,12 +344,13 @@
   if (!is.null(prep$carteira) && NROW(prep$carteira) > 0) {
     mods <- c(mods, "stats", "cumulative", "rolling", "period", "drawdowns", "table", "footer")
   }
-  # Candles is available if we have any OHLC mktdata
-  if (!is.null(prep$mktdata) && .is_xts(prep$mktdata) && .is_ohlc_xts(prep$mktdata)) {
-    mods <- c(mods, "candles")
-    # Volume module if volume present
+  # Candles/Volume available if we can standardize to OHLC (even from Close-only)
+  if (!is.null(prep$mktdata) && .is_xts(prep$mktdata)) {
     std <- .to_ohlc_standard(prep$mktdata)
-    if (!is.null(std) && "Volume" %in% colnames(std)) mods <- c(mods, "volume")
+    if (!is.null(std)) {
+      mods <- c(mods, "candles")
+      if ("Volume" %in% colnames(std)) mods <- c(mods, "volume")
+    }
   }
   # Position requires transactions
   if (!is.null(prep$trades) && .is_xts(prep$trades) && NROW(prep$trades) > 0) {
@@ -814,7 +879,8 @@ fix_pkg <- function(x) {
 
   # 2) Prefer quantstrat/blotter portfolio data by name (portfolio-first lookup)
   mktdata <- NULL; trades <- NULL; stats <- NULL
-  pf_name <- NULL; port_rets <- NULL
+  pf_name <- NULL; port_rets <- NULL; bt_rets <- NULL
+  from_backtest <- FALSE
   # Optional hint provided by wrapper to select a specific portfolio/symbol
   hint <- getOption("tplot.portfolio_hint", NULL)
   if (is.list(hint) && is.character(hint$name)) {
@@ -879,9 +945,11 @@ fix_pkg <- function(x) {
   if (is.null(mktdata) && is.null(trades)) {
     bt_env <- .as_backtest(if (!is.character(ativo)) ativo else .get_object_if_exists(ativo))
     if (!is.null(bt_env)) {
+      from_backtest <- TRUE
       mktdata <- bt_env$mktdata %||% NULL
       trades  <- bt_env$trades  %||% NULL
       stats   <- bt_env$stats   %||% NULL
+      bt_rets <- bt_env$rets    %||% NULL
     }
   }
 
@@ -899,12 +967,17 @@ fix_pkg <- function(x) {
     if (!is.null(port_rets) && .is_xts(port_rets) && NROW(port_rets) > 0) {
       # Prefer backtest portfolio returns (already discrete)
       series_map[[ativo_name]] <- port_rets
+    } else if (!is.null(bt_rets) && .is_xts(bt_rets)) {
+      series_map[[ativo_name]] <- .subset_xts(bt_rets, init, finit)
     } else if (!is.null(mktdata) && .is_xts(mktdata)) {
       # Fallback: use price series directly
       series_map[[ativo_name]] <- .subset_xts(mktdata, init, finit)
     } else {
       requested <- c(requested, ativo)
     }
+  } else if (!is.null(bt_rets) && .is_xts(bt_rets)) {
+    if (is.null(ativo_name)) ativo_name <- "Asset"
+    series_map[[ativo_name]] <- .subset_xts(bt_rets, init, finit)
   } else if (!is.null(mktdata) && .is_xts(mktdata)) {
     # If we detected a backtest with mktdata but 'ativo' isn't an xts/character,
     # derive a synthetic series for returns from mktdata (Adjusted/Close fallback).
@@ -1029,26 +1102,12 @@ fix_pkg <- function(x) {
   vmsg("[.tplot_prepare] Prepared raw series: ", paste(names(dados_raw), collapse = ", "))
 
   # 5) If sm_get_data tagged as backtest, try to pick extra pieces from env
-  if (is.list(dados_raw) && length(dados_raw) > 0) {
-    if (isTRUE(attr(dados_raw[[1]], "backtest"))) {
-      message("Processing Backtest")
-      # prefer previously discovered backtest pieces; otherwise try global
-      if (is.null(mktdata) || is.null(trades)) {
-        bt_guess <- .as_backtest(.get_object_if_exists(ativo))
-        if (!is.null(bt_guess)) {
-          mktdata <- bt_guess$mktdata
-          trades  <- bt_guess$trades
-          stats   <- bt_guess$stats %||% stats
-        }
-      }
-      # legacy behavior removed forced dependency on global get(ativo)
-    }
-  }
+  # (legacy attribute-based detection dropped; backtest handled above)
 
   # 5.1) Choose an OHLC series for the candles module when possible.
   # Preference order: backtest mktdata (if valid OHLC), then first OHLC among
   # 'ativo' and 'benchs' (in the order they were provided).
-  if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
+  if ((is.null(mktdata) || !.is_ohlc_xts(mktdata)) && !from_backtest && is.null(pf_name)) {
     choose_first_ohlc <- function(nm) {
       if (is.null(nm)) return(NULL)
       x <- dados_raw[[nm]]

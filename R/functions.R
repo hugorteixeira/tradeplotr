@@ -191,50 +191,6 @@ tplot <- function(...,
   invisible(NULL)
 }
 
-#' Plot a quantstrat/blotter Portfolio similar to chart.Posn, enriched with tplot modules
-#' This is a convenience wrapper that prioritizes portfolio data (mktdata + trades)
-#' while still rendering the other tplot modules (stats, cumulative, etc.).
-#'
-#' @param portfolio The portfolio name (as used with blotter/quantstrat).
-#' @param symbol Optional symbol to focus when the portfolio contains multiple symbols.
-#' @param ... Optional additional tickers/benchmarks to compare against.
-#' @inheritParams tplot
-#'
-#' @export
-tplot_posn <- function(portfolio,
-                       symbol     = NULL,
-                       ...,
-                       init       = "1994-08-01",
-                       finit      = Sys.Date(),
-                       rf_rate    = NULL,
-                       auto_rets  = FALSE,
-                       format     = c("viewer","html","json","png","jpg"),
-                       output_dir = "tplots",
-                       modules    = c("stats","candles","position","cumulative","rolling",
-                                      "period","drawdowns","table","footer"),
-                       theme      = default_theme(),
-                       verbose    = getOption("tplot.verbose", FALSE)){
-  # Provide a hint so .tplot_prepare fetches portfolio-first
-  hint <- list(name = as.character(portfolio))
-  if (!is.null(symbol)) hint$symbol <- as.character(symbol)
-  old_opt <- getOption("tplot.portfolio_hint", NULL)
-  on.exit(options(tplot.portfolio_hint = old_opt), add = TRUE)
-  options(tplot.portfolio_hint = hint)
-
-  # Decide the primary symbol for returns/candles
-  chosen_symbol <- NULL
-  # Try to resolve quickly to have a stable label/order
-  qs <- try(.quantstrat_portfolio_data(as.character(portfolio), init, finit), silent = TRUE)
-  if (is.list(qs) && !is.null(qs$symbol)) chosen_symbol <- qs$symbol
-  if (!is.null(symbol)) chosen_symbol <- as.character(symbol)
-  if (is.null(chosen_symbol)) chosen_symbol <- as.character(portfolio)
-
-  # Dispatch to tplot with the chosen symbol as the first asset
-  tplot(chosen_symbol, ..., init = init, finit = finit, rf_rate = rf_rate,
-        auto_rets = auto_rets, format = format, output_dir = output_dir,
-        modules = modules, theme = theme, verbose = verbose)
-}
-
 #' @title Launch an Interactive tplot Viewer with Shiny
 #' @description
 #' An interactive variant of tplot that opens a Shiny application, allowing the user
