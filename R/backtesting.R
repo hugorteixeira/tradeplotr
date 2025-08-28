@@ -453,7 +453,7 @@ psRiscopctDonchian_DI <- function(data, timestamp,
 }
 eldoc_backtest <- function(ticker, verde_x = 40, vermelho_y = 40, ps = "pct", fee = "normal", inicio = "2000-01-01", final = Sys.Date(), verb = FALSE, only_returns = FALSE) {
 
-  #rm.strat("elDoc")
+  rm.strat("elDoc")
   #rm.strat("elDoc")
   #rm.strat("elDoc")
 
@@ -464,7 +464,7 @@ eldoc_backtest <- function(ticker, verde_x = 40, vermelho_y = 40, ps = "pct", fe
     print(str(dados))
   }
   #usar_close(ticker)
-
+  original_ticker <- ticker
   bt_ticker <- paste0(ticker,"_BT_",verde_x,"_",vermelho_y,"_PS_",ps)
   print(bt_ticker)
   instrument_attr(ticker, "primary_id", bt_ticker)
@@ -699,6 +699,8 @@ eldoc_backtest <- function(ticker, verde_x = 40, vermelho_y = 40, ps = "pct", fe
   cat("\nRetorno Anualizado:", Return.annualized(ptrets, geometric = FALSE), "\n")
   cat("Retorno Cumulativo:", Return.cumulative(ptrets, geometric = FALSE), "\n")
   index(ptrets) <- converter_posixct(ptrets)
+  index(txns) <- converter_posixct(txns)
+  index(acrets) <- converter_posixct(acrets)
   colnames(ptrets) <- "Discrete"
   stop_t <- Sys.time()
   cat(paste("\nTempo de execução:", stop_t - start_t))
@@ -723,23 +725,17 @@ eldoc_backtest <- function(ticker, verde_x = 40, vermelho_y = 40, ps = "pct", fe
   attr(ptrets, "backtest") <- TRUE
   attr(ptrets, "local") <- TRUE
 
-  nomes_elementos <- c("rets",
-                       #paste0(ticker,"_DC_",verde_x,"_",vermelho_y,"_PS_",ps),
-                       #   paste0(ticker,"_stats_",verde_x,"_",vermelho_y,"_PS_",ps),
-                       #  paste0(ticker,"_trades_",verde_x,"_",vermelho_y,"_PS_",ps),
-                       # paste0(ticker,"_rets_acct_",verde_x,"_",vermelho_y,"_PS_",ps),
-                       #paste0(ticker,"_mktdata_",verde_x,"_",vermelho_y,"_PS_",ps),
-                       "stats","trades","rets_acct","mktdata")
+  nomes_elementos <- c("rets","stats","trades","rets_acct","mktdata")
 
   resultados <- setNames(
     list(ptrets, stats, txns, acrets, mktdata),
     nomes_elementos
   )
-  rm(list = ticker, envir = .GlobalEnv)  # limpa o dado grande
+  #rm(list = ticker, envir = .GlobalEnv)  # limpa o dado grande
   #rm(mktdata, envir = .GlobalEnv)
   #  assign("resultados",resultados, envir = .GlobalEnv)
   # assign("resultados",resultados, envir = .GlobalEnv)
-  tplot(portfolio.st)
+  tplot(portfolio.st,original_ticker)
 
   #tplot(resultados[[1]],benchs="DOLAR")
 

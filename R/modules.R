@@ -348,16 +348,23 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   }, silent = TRUE)
   if (inherits(txns, "try-error") || is.null(txns) || NROW(txns) == 0) return(NULL)
 
-  # Build cumulative position series on the transaction timestamps,
-  # then align to the union of mktdata and txns indexes to support intraday flips.
-  qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
-  if (is.null(qty)) return(NULL)
-  tx_times <- index(txns)
-  # cumsum and collapse duplicates at identical timestamps keeping the last cumulative value
-  cumv <- cumsum(qty)
-  df_tx <- data.frame(t = tx_times, cum = cumv)
-  agg <- stats::aggregate(cum ~ t, data = df_tx, FUN = function(v) tail(v, 1))
-  pos_tx <- xts::xts(agg$cum, order.by = agg$t)
+  # Prefer Pos.Qty (blotter) if available; otherwise compute cumsum(Txn.Qty)
+  pos_tx <- NULL
+  if ("Pos.Qty" %in% colnames(txns)) {
+    qtyp <- tryCatch(as.numeric(txns$Pos.Qty), error = function(e) NULL)
+    if (!is.null(qtyp)) {
+      pos_tx <- xts::xts(qtyp, order.by = index(txns))
+    }
+  }
+  if (is.null(pos_tx)) {
+    qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
+    if (is.null(qty)) return(NULL)
+    tx_times <- index(txns)
+    cumv <- cumsum(qty)
+    df_tx <- data.frame(t = tx_times, cum = cumv)
+    agg <- stats::aggregate(cum ~ t, data = df_tx, FUN = function(v) tail(v, 1))
+    pos_tx <- xts::xts(agg$cum, order.by = agg$t)
+  }
   # Union timeline to cover both candles and txn events
   combined_idx <- sort(unique(c(index(mktdata), index(pos_tx))))
   pos_union <- xts::xts(rep(NA_real_, length(combined_idx)), order.by = combined_idx)
@@ -418,10 +425,13 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
     hc_plotOptions(series = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_add_series(
       data         = pos_data,
-      type         = "area",
-      step         = "left",
+      type         = "column",
       name         = "Position",
+      colorByPoint = FALSE,
       zones        = zones,
+      pointPadding = 0,
+      groupPadding = 0,
+      borderWidth  = 0,
       showInLegend = FALSE
     )
   termina <- Sys.time()

@@ -230,14 +230,13 @@
       if (.is_xts(tx_try) && NROW(tx_try) > 0) { chosen <- s; break }
     }
   }
-  # Get transactions for the chosen symbol if possible
+  # Get transactions: prefer portfolio-stored txn (has Pos.Qty), fallback to getTxns()
   trades <- NULL
-  if (!is.null(getTxns)) {
-    trades <- tryCatch(getTxns(Portfolio = name, Symbol = chosen), error = function(e) NULL)
-  }
-  # If getTxns failed, try to pull directly from portfolio object
-  if (is.null(trades) && !is.null(pf$symbols[[chosen]]$txn)) {
+  if (!is.null(pf$symbols[[chosen]]$txn)) {
     trades <- tryCatch(pf$symbols[[chosen]]$txn, error = function(e) NULL)
+  }
+  if (is.null(trades) && !is.null(getTxns)) {
+    trades <- tryCatch(getTxns(Portfolio = name, Symbol = chosen), error = function(e) NULL)
   }
   if (.is_xts(trades)) trades <- .subset_xts(trades, init, finit)
   # Try to locate OHLC market data in the environment first
@@ -950,6 +949,33 @@ fix_pkg <- function(x) {
       trades  <- bt_env$trades  %||% NULL
       stats   <- bt_env$stats   %||% NULL
       bt_rets <- bt_env$rets    %||% NULL
+      # Prefer asset label from stats$Symbol when present
+      extract_sym <- function(st) {
+        if (is.null(st)) return(NULL)
+        if (is.data.frame(st) && "Symbol" %in% colnames(st)) {
+          vv <- as.character(st$Symbol)
+          vv <- vv[!is.na(vv) & nzchar(vv)]
+          if (length(vv) > 0) return(vv[1])
+        }
+        if (is.list(st) && !is.null(st$Symbol)) {
+          vv <- as.character(st$Symbol)
+          vv <- vv[!is.na(vv) & nzchar(vv)]
+          if (length(vv) > 0) return(vv[1])
+        }
+        NULL
+      }
+      sym_from_stats <- extract_sym(stats)
+      if (!is.null(sym_from_stats)) {
+        # Always override with Symbol if provided in stats
+        ativo_name <- sym_from_stats
+      } else if (is.null(ativo_name)) {
+        # Fallback: if original object is a list, try first element name
+        obj0 <- if (!is.character(ativo)) ativo else .get_object_if_exists(ativo)
+        if (is.list(obj0)) {
+          nms <- names(obj0)
+          if (!is.null(nms) && length(nms) > 0 && nzchar(nms[1])) ativo_name <- nms[1]
+        }
+      }
     }
   }
 
