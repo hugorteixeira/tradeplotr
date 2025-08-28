@@ -763,13 +763,13 @@ fix_pkg <- function(x) {
   }
   .pretty_scale <- function(on) {
     switch(on,
-           minutes = "Minutos",
-           hours   = "Horas",
-           days    = "Diário",
-           weeks   = "Semanal",
-           months  = "Mensal",
-           quarters= "Trimestral",
-           years   = "Anual",
+           minutes = "Minutes",
+           hours   = "Hours",
+           days    = "Daily",
+           weeks   = "Weekly",
+           months  = "Monthly",
+           quarters= "Quarterly",
+           years   = "Annual",
            on)
   }
   .normalize_index <- function(x, on) {
@@ -812,11 +812,11 @@ fix_pkg <- function(x) {
   # Build user-friendly message if alignment is needed or if intraday found
   det <- paste(sprintf("%s: %s", col_names, per_labels), collapse = ", ")
   if (any(keys < 3L)) {
-    message(sprintf("[.data_prepare] Detectei série(s) intradiárias (%s). Convertendo para escala %s para compatibilidade de métricas.",
+    message(sprintf("[.data_prepare] Detected (s) with intraday data (%s). Changing timeframe %s for compatibility.",
                    paste(col_names[keys < 3L], collapse = ", "), .pretty_scale("days")))
   }
   if (any(keys != target_key)) {
-    message(sprintf("[.data_prepare] Alinhando periodicidade dos retornos -> %s | Detectadas: %s",
+    message(sprintf("[.data_prepare] Fixing periodicity of returns -> %s | Detected: %s",
                    .pretty_scale(target_on), det))
   }
 
@@ -986,7 +986,7 @@ fix_pkg <- function(x) {
   if (.is_xts(ativo) || is.matrix(ativo) || is.data.frame(ativo) || inherits(ativo, "zoo")) {
     at_xts <- .to_xts(ativo)
     if (!.is_xts(at_xts)) stop("Could not convert ticker to xts.")
-    if (is.null(ativo_name)) ativo_name <- "Ativo"
+    if (is.null(ativo_name)) ativo_name <- "Assets"
     series_map[[ativo_name]] <- .subset_xts(at_xts, init, finit)
   } else if (is.character(ativo) && length(ativo) == 1) {
     if (is.null(ativo_name)) ativo_name <- ativo
@@ -1015,10 +1015,41 @@ fix_pkg <- function(x) {
   }
   # benchs can be NULL or character vector; (optional) accept list of xts
   benchs_names <- character(0)
+  label_from_stats <- function(st, default_label) {
+    if (!is.null(st)) {
+      if (is.data.frame(st) && "Symbol" %in% colnames(st)) {
+        vv <- as.character(st$Symbol)
+        vv <- vv[!is.na(vv) & nzchar(vv)]
+        if (length(vv) > 0) return(vv[1])
+      }
+      if (is.list(st) && !is.null(st$Symbol)) {
+        vv <- as.character(st$Symbol)
+        vv <- vv[!is.na(vv) & nzchar(vv)]
+        if (length(vv) > 0) return(vv[1])
+      }
+    }
+    default_label
+  }
   if (!is.null(benchs)) {
     if (is.character(benchs)) {
-      benchs_names <- benchs
-      requested <- c(requested, benchs)
+      # iterate and try to treat each as backtest object or symbol
+      for (sym in benchs) {
+        added <- FALSE
+        if (is.character(sym) && length(sym) == 1) {
+          obj <- .get_object_if_exists(sym)
+          bt  <- .as_backtest(obj)
+          if (!is.null(bt) && .is_xts(bt$rets)) {
+            lab <- label_from_stats(bt$stats, sym)
+            series_map[[lab]] <- .subset_xts(bt$rets, init, finit)
+            benchs_names <- c(benchs_names, lab)
+            added <- TRUE
+          }
+        }
+        if (!added) {
+          requested <- c(requested, sym)
+          benchs_names <- c(benchs_names, sym)
+        }
+      }
     } else if (.is_xts(benchs) || is.matrix(benchs) || is.data.frame(benchs) || inherits(benchs, "zoo")) {
       # Treat single xts/data.frame object as ONE benchmark asset
       b_xts <- .to_xts(benchs)
@@ -1027,7 +1058,7 @@ fix_pkg <- function(x) {
       series_map[[b_lab]] <- .subset_xts(b_xts, init, finit)
       benchs_names <- c(benchs_names, b_lab)
     } else if (is.list(benchs)) {
-      # list of xts series
+      # list of mixed items: xts, backtest list, or character names
       for (i in seq_along(benchs)) {
         bi <- benchs[[i]]
         nm <- names(benchs)[i]
@@ -1038,9 +1069,26 @@ fix_pkg <- function(x) {
             series_map[[nm]] <- .subset_xts(conv, init, finit)
             benchs_names <- c(benchs_names, nm)
           }
+        } else if (is.list(bi)) {
+          bt <- .as_backtest(bi)
+          if (!is.null(bt) && .is_xts(bt$rets)) {
+            def_nm <- if (!is.null(nm) && nzchar(nm)) nm else paste0("Bench", i)
+            lab <- label_from_stats(bt$stats, def_nm)
+            series_map[[lab]] <- .subset_xts(bt$rets, init, finit)
+            benchs_names <- c(benchs_names, lab)
+          }
         } else if (is.character(bi) && length(bi) == 1) {
-          requested <- c(requested, bi)
-          benchs_names <- c(benchs_names, bi)
+          # try resolve by name as backtest first
+          obj <- .get_object_if_exists(bi)
+          bt  <- .as_backtest(obj)
+          if (!is.null(bt) && .is_xts(bt$rets)) {
+            lab <- label_from_stats(bt$stats, bi)
+            series_map[[lab]] <- .subset_xts(bt$rets, init, finit)
+            benchs_names <- c(benchs_names, lab)
+          } else {
+            requested <- c(requested, bi)
+            benchs_names <- c(benchs_names, bi)
+          }
         }
       }
     } else {

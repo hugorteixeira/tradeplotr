@@ -12,11 +12,11 @@ stats_module <- function(carteira_df, ativo, benchs, theme){
     #"<h3 style='font-family:",theme$font_family,
     #";font-size:",theme$font_sizes$title,"px;font-weight:bold;margin:20px 0;",
     #"color:",cl$title_txt,";'>Performance Stats</h3>",
-    # Container com overflow horizontal
+    # Container with horizontal overflow
     "<div style='width:100%;max-width:100%;margin:0;padding:0;",
     "overflow-x:auto;overflow-y:visible;'>",
     "<table style='min-width:100%;font-family:",theme$font_family,
-    ";table-layout:auto;white-space:nowrap;", # mudado para nowrap
+    ";table-layout:auto;white-space:nowrap;", # changed to nowrap
     "background-color:",cl$page_bg,";border-collapse:collapse;'>"
   )
   html <- paste0(html,"<tr>")
@@ -45,7 +45,7 @@ stats_module <- function(carteira_df, ativo, benchs, theme){
         "<td style='padding:8px 12px;font-family:",theme$font_family,
         ";font-size:",theme$font_sizes$table,
         "px;color:",cl$table_row_txt,
-        ";border:1px solid rgba(0,0,0,0.1);'>", # borda sutil
+        ";border:1px solid rgba(0,0,0,0.1);'>", # subtle border
         carteira_df[i,j],"</td>"
       )
     }
@@ -142,7 +142,7 @@ rentab_table_module <- function(lista_tabelas, ativo, benchs, theme){
 #' @return A data.frame with the calendar returns.
 #' @keywords internal
 rentab_table_calc <- function(nome_do_objeto, retornar = TRUE, geometric = TRUE) {
-  # Calcular os retornos mensais acumulados
+  # Calculate the accumulated monthly returns
   return_man_mensal <- apply.monthly(nome_do_objeto, colSums)
   colnames(return_man_mensal) <- "Ano"
   return_man_mensal <- table.CalendarReturns(return_man_mensal, digits = 2, geometric = geometric)

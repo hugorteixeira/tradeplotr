@@ -37,6 +37,8 @@ The first item is treated as the main asset, and the rest as benchmarks.}
 \item{modules}{A character vector of modules to include in the report.}
 
 \item{theme}{The theme function to use (e.g., `default_theme()` or `dark_theme()`).}
+
+\item{verbose}{Print more info for debugging purposes}
 }
 \value{
 Invisibly returns the path to the generated file (for "html", "png", "jpg"),

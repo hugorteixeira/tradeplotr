@@ -1,3 +1,9 @@
+#' @importFrom stats setNames
+#' @importFrom utils tail
+#' @importFrom zoo index
+#' @importFrom zoo "index<-"
+#' @noRd
+NULL
 #' @title Generate a Performance Report for Financial Assets
 #' @description
 #' Creates a complete and customizable performance report for one or more financial assets,
@@ -14,6 +20,7 @@
 #' @param output_dir The directory where output files (HTML, PNG, etc.) will be saved.
 #' @param modules A character vector of modules to include in the report.
 #' @param theme The theme function to use (e.g., `default_theme()` or `dark_theme()`).
+#' @param verbose Print more info for debugging purposes
 #'
 #' @return Invisibly returns the path to the generated file (for "html", "png", "jpg"),
 #' the JSON string (for "json"), or launches the interactive viewer (for "viewer").
@@ -37,7 +44,7 @@ tplot <- function(...,
                        choices = c("stats","candles","volume","position","cumulative","rolling",
                                    "period","drawdowns","table","footer"))
 
-  # Parse variable tickers: first is main (ativo), others are secondary
+  # Parse variable tickers: first is main (asset), others are secondary
   mc <- match.call(expand.dots = FALSE)
   dot_exprs <- mc$...
   if (is.null(dot_exprs) || length(dot_exprs) == 0)
@@ -119,7 +126,7 @@ tplot <- function(...,
   for (ex in as.list(dot_exprs)) parse_one(ex)
   if (length(items) == 0) stop("No valid ticker identified in ...")
 
-  # split into ativo (first) and benchs (rest)
+  # split into asset (first) and benchs (rest)
   ativo_item  <- items[[1]]
   bench_items <- if (length(items) > 1) items[-1] else list()
 
