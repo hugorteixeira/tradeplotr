@@ -261,9 +261,12 @@ candles_module <- function(mktdata, txns, theme){
     buys  <- txns[ txns$Txn.Qty >  0 , ]
     sells <- txns[ txns$Txn.Qty <  0 , ]
   }
-
+print(std)
   di_flag       <- isDI(std)
+  print(di_flag)
+  print("is di?")
   maturity_date <- attr(std, "maturity")
+  print(maturity_date)
   if (has_txns && di_flag && !is.null(maturity_date)){
     buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
     sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))

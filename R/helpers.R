@@ -453,9 +453,58 @@
 #' @return Logical.
 #' @keywords internal
 isDI <- function(mkt){
+  print("Checking for DI data.")
   if (is.null(mkt)) return(FALSE)
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
+}
+calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = cal_b3) {
+  # 0) calendário padrão (se o usuário não passar um explícito)
+
+  if (is.null(cal)) {
+    cal <- create.calendar(
+      name      = "Brazil/ANBIMA",
+      holidays  = holidays("Brazil/ANBIMA"),
+      weekdays  = c("saturday", "sunday")
+    )
+  }
+
+
+  # 1) número de dias úteis (n) e prazo em meses corridos (mm)
+  if (inherits(vencimento, "Date")) {
+    n  <- bizdays(data_base, vencimento, cal)           # dias úteis
+    mm <- lubridate::interval(data_base, vencimento) %/% months(1)
+  } else if (is.numeric(vencimento)) {
+    n  <- as.integer(vencimento)
+    mm <- n / 21                                        # aprox. meses
+  } else {
+    stop("'vencimento' deve ser número de dias úteis (numeric) ou objeto Date.")
+  }
+
+  # 2) tick-size
+  tick_size <- if      (mm <=  3) 0.001
+  else if (mm <= 60) 0.005
+  else               0.010
+
+
+  # 3) taxa implícita
+  #        PU = 100000 / (1 + i)^(n/252)
+  #  ==>   i  = (100000/Pu)^(252/n) - 1
+  #        (i em pontos-percentuais: × 100)
+  taxa <- 100 * ( (1e5 / pu)^(252 / n) - 1 )
+
+  # 4) tick-value (= |dPU/d(i)| · tick_size)
+  #        dPU/d(i) = (n/252)*100000/100*(1 + i)^{-(n/252)-1}
+  deriv       <- (n/252) * 1e5/100 * (1 + taxa/100)^(-(n/252) - 1)
+  tick_value  <- deriv * tick_size        # já em módulo
+
+  # 5) saída
+  return(list(
+    dias_uteis  = n,
+    taxa        = round(as.numeric(taxa),3),
+    tick_size   = tick_size,
+    tick_value  = round(as.numeric(tick_value),3)
+  ))
 }
 
 #' Calculates the rate from the PU of a brazilian DI futures contract
