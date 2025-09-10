@@ -295,7 +295,7 @@ print(std)
   hc <- do.call(highcharter::hc_add_series,
                 c(list(hc = hc, data = ohlc_data, type = "candlestick", name = "Ativo", yAxis = "price"),
                   ohlc_style)) %>%
-    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = FALSE))) %>%
+    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = TRUE))) %>%
     hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
              events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
     hc_rangeSelector(enabled = TRUE,
