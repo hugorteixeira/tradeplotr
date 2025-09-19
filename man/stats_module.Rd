@@ -4,14 +4,14 @@
 \alias{stats_module}
 \title{Renders the Performance Statistics Table Module}
 \usage{
-stats_module(carteira_df, ativo, benchs, theme)
+stats_module(stats_df, asset, benchmarks, theme)
 }
 \arguments{
-\item{carteira_df}{The data.frame with performance statistics.}
+\item{stats_df}{The data.frame with performance statistics.}
 
-\item{ativo}{The name of the main asset.}
+\item{asset}{The name of the main asset.}
 
-\item{benchs}{A character vector with benchmark names.}
+\item{benchmarks}{A character vector with benchmark names.}
 
 \item{theme}{The theme list object.}
 }

@@ -4,14 +4,14 @@
 \alias{rentab_table_module}
 \title{Renders the Monthly/Annual Returns Table Module}
 \usage{
-rentab_table_module(lista_tabelas, ativo, benchs, theme)
+rentab_table_module(returns_tables, asset, benchmarks, theme)
 }
 \arguments{
-\item{lista_tabelas}{A list of returns data.frames, one for each asset.}
+\item{returns_tables}{A list of returns data.frames, one for each asset.}
 
-\item{ativo}{The name of the main asset.}
+\item{asset}{The name of the main asset.}
 
-\item{benchs}{A character vector with benchmark names.}
+\item{benchmarks}{A character vector with benchmark names.}
 
 \item{theme}{The theme list object.}
 }

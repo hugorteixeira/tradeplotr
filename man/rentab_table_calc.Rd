@@ -4,10 +4,10 @@
 \alias{rentab_table_calc}
 \title{Calculates the Monthly and Annual Returns Table}
 \usage{
-rentab_table_calc(nome_do_objeto, retornar = TRUE, geometric = TRUE)
+rentab_table_calc(series_object, retornar = TRUE, geometric = geometric)
 }
 \arguments{
-\item{nome_do_objeto}{An xts object with a single column of returns.}
+\item{series_object}{An xts object with a single column of returns.}
 
 \item{retornar}{Logical, whether to return the table.}
 

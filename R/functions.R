@@ -15,7 +15,7 @@ NULL
 #' @param init Start date for the analysis in "YYYY-MM-DD" format.
 #' @param finit End date for the analysis in "YYYY-MM-DD" format.
 #' @param rf_rate The risk-free rate for calculating metrics like the Sharpe Ratio.
-#' @param auto_rets Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.
+#' @param geometric Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.
 #' @param format The output format: "viewer", "html", "json", "png", or "jpg".
 #' @param output_dir The directory where output files (HTML, PNG, etc.) will be saved.
 #' @param modules A character vector of modules to include in the report.
@@ -30,7 +30,7 @@ tplot <- function(...,
                   init       = "1994-08-01",
                   finit      = Sys.Date(),
                   rf_rate    = NULL,
-                  auto_rets  = FALSE,
+                  geometric  = TRUE,
                   format     = c("viewer","html","json","png","jpg"),
                   output_dir = "tplots",
                   modules    = c("stats","candles","volume","position","cumulative","rolling",
@@ -149,7 +149,7 @@ tplot <- function(...,
   if (length(theme$palette) < n_assets)
     theme$palette <- colorRampPalette(theme$palette)(n_assets)
 
-  prep <- .tplot_prepare(ativo_spec, benchs_spec, init, finit, rf_rate, auto_rets,
+  prep <- .tplot_prepare(ativo_spec, benchs_spec, init, finit, rf_rate, geometric,
                          ativo_name = ativo_label,
                          verbose = verbose)
   preparo <- Sys.time()
@@ -207,7 +207,7 @@ tplot <- function(...,
 #' @param init Start date for the analysis.
 #' @param finit End date for the analysis.
 #' @param rf_rate The risk-free rate.
-#' @param auto_rets Logical, for geometric returns.
+#' @param geometric Logical, for geometric returns.
 #' @param modules Modules to display in the app.
 #' @param theme The theme function to use.
 #'
@@ -218,7 +218,7 @@ tplot_interactive <- function(...,
                               init = "1994-08-01",
                               finit = Sys.Date(),
                               rf_rate = NULL,
-                              auto_rets = FALSE,
+                              geometric = FALSE,
                               modules = c("stats","candles","volume","position", "cumulative","rolling", "period","drawdowns"),
                               theme = default_theme()) {
 
@@ -323,7 +323,7 @@ tplot_interactive <- function(...,
     args <- series_to_prep_args(series)
     if (is.null(args)) return(NULL)
     tryCatch({
-      .tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, auto_rets, ativo_name = args$ativo_label)
+      .tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric, ativo_name = args$ativo_label)
     }, error = function(e) { NULL })
   }
 
@@ -353,7 +353,7 @@ tplot_interactive <- function(...,
       s <- isolate(rv$series)
       args <- series_to_prep_args(s)
       if (is.null(args)) return(NULL)
-      res <- tryCatch(.tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, auto_rets, ativo_name = args$ativo_label),
+      res <- tryCatch(.tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric, ativo_name = args$ativo_label),
                       error = function(e) { shiny::showNotification(paste("Error preparing data:", e$message), type = "error"); NULL })
       # if success, align rv$series order/labels with res$carteira
       if (!is.null(res)) {
@@ -410,13 +410,13 @@ tplot_interactive <- function(...,
 
       p <- prep_reactive()
       if (is.null(p)) return(shiny::HTML("<div>No data</div>"))
-      df <- p$carteira_df
+      df <- p$stats_df %||% p$carteira_df
       pal <- theme$palette; cl <- theme$colors
 
       thead <- tags$tr(lapply(colnames(df), function(col) tags$th(col, style = sprintf('background-color:%s;color:%s;padding:8px 12px;font-family:%s;font-size:%dpx;font-weight:bold;border:1px solid rgba(0,0,0,0.1);', cl$table_header_bg, cl$table_header_txt, theme$font_family, theme$font_sizes$table))))
 
       tbody_rows <- lapply(seq_len(nrow(df)), function(i) {
-        lab <- as.character(df$Ativos[i])
+        lab <- as.character(df$Asset[i])
         # find index in rv$series (1-based)
         idx <- which(sapply(isolate(rv$series), function(x) x$label) == lab)
         if (length(idx) == 0) idx <- i
@@ -426,16 +426,16 @@ tplot_interactive <- function(...,
         bg <- paste0('rgba(', paste(rgb_col[,1], collapse=','), ',0.2)')
         first_td <- tags$td(
           tags$span(lab, class = 'series-name', `data-row` = idx),
-          tags$span('-', class = 'mini-btn rem-btn', `data-row` = idx, title = 'Remover'),
+          tags$span('-', class = 'mini-btn rem-btn', `data-row` = idx, title = 'Remove'),
           style = sprintf('padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);', theme$font_family, theme$font_sizes$table, cl$table_row_txt)
         )
         other_tds <- lapply(colnames(df)[-1], function(col) tags$td(as.character(df[i, col]), style = sprintf('padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);', theme$font_family, theme$font_sizes$table, cl$table_row_txt)))
         tags$tr(`data-row` = idx, style = sprintf('background-color:%s;', bg), first_td, other_tds)
       })
 
-      # header: add a + button in the 'Ativos' header cell
+      # header: add a + button in the 'Assets' header cell
       header_cells <- lapply(colnames(df), function(col) {
-        if (col == 'Ativos') {
+        if (col == 'Asset' || tolower(col) == 'assets' || tolower(col) == 'tickers') {
           tags$th(style = sprintf('background-color:%s;color:%s;padding:8px 12px;font-family:%s;font-size:%dpx;font-weight:bold;border:1px solid rgba(0,0,0,0.1);', cl$table_header_bg, cl$table_header_txt, theme$font_family, theme$font_sizes$table),
                   tags$span(col),
                   shiny::actionButton('header_add', '+', class = 'mini-btn', style = 'margin-left:8px;')
@@ -465,7 +465,7 @@ tplot_interactive <- function(...,
         title = paste("Edit ticker:", cur_label),
         shiny::textInput("tplot_edit_input", "New ticker:", value = cur_label),
         shiny::tags$script(HTML("$('#tplot_edit_input').on('keydown', function(e){ if(e.key === 'Enter'){ var el=$(this); el.trigger('change'); setTimeout(function(){ $('#tplot_confirm_edit').click(); }, 50); } });")),
-        footer = shiny::tagList(shiny::modalButton("Cancel"), shiny::actionButton("tplot_confirm_edit", "Confirmar")),
+        footer = shiny::tagList(shiny::modalButton("Cancel"), shiny::actionButton("tplot_confirm_edit", "Confirm")),
         easyClose = TRUE
       ))
     })
@@ -480,7 +480,7 @@ tplot_interactive <- function(...,
       cand[[idx]] <- list(type = 'char', value = as.character(newsym), label = as.character(newsym), source = as.character(newsym))
       test <- test_prepare(cand)
       if (is.null(test)) {
-        shiny::showNotification(paste("Erro ao obter dados para", newsym), type = "error")
+        shiny::showNotification(paste("Error fetching data for", newsym), type = "error")
       } else {
         rv$series <- cand
       }
@@ -489,10 +489,10 @@ tplot_interactive <- function(...,
     # Add from header
     shiny::observeEvent(input$header_add, {
       shiny::showModal(shiny::modalDialog(
-        title = "Adicionar ativo",
+        title = "Add asset",
         shiny::textInput("tplot_add_input", "Ticker:", value = ""),
         shiny::tags$script(HTML("$('#tplot_add_input').on('keydown', function(e){ if(e.key === 'Enter'){ var el=$(this); el.trigger('change'); setTimeout(function(){ $('#tplot_confirm_add').click(); }, 50); } });")),
-        footer = shiny::tagList(shiny::modalButton("Cancelar"), shiny::actionButton("tplot_confirm_add", "Adicionar")),
+        footer = shiny::tagList(shiny::modalButton("Cancel"), shiny::actionButton("tplot_confirm_add", "Add")),
         easyClose = TRUE
       ))
     })
@@ -504,7 +504,7 @@ tplot_interactive <- function(...,
       cand[[length(cand)+1]] <- list(type = 'char', value = as.character(newsym), label = as.character(newsym), source = as.character(newsym))
       test <- test_prepare(cand)
       if (is.null(test)) {
-        shiny::showNotification(paste("Erro ao obter dados para", newsym), type = "error")
+        shiny::showNotification(paste("Error fetching data for", newsym), type = "error")
       } else {
         rv$series <- cand
       }

@@ -458,8 +458,7 @@ isDI <- function(mkt){
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
 }
-calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = cal_b3) {
-  # 0) calendário padrão (se o usuário não passar um explícito)
+calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = NULL) {
 
   if (is.null(cal)) {
     cal <- create.calendar(
@@ -470,15 +469,14 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = c
   }
 
 
-  # 1) número de dias úteis (n) e prazo em meses corridos (mm)
   if (inherits(vencimento, "Date")) {
-    n  <- bizdays(data_base, vencimento, cal)           # dias úteis
+    n  <- bizdays(data_base, vencimento, cal)
     mm <- lubridate::interval(data_base, vencimento) %/% months(1)
   } else if (is.numeric(vencimento)) {
     n  <- as.integer(vencimento)
-    mm <- n / 21                                        # aprox. meses
+    mm <- n / 21
   } else {
-    stop("'vencimento' deve ser número de dias úteis (numeric) ou objeto Date.")
+    stop("'vencimento' deve ser numero de dias uteis (numeric) ou objeto Date.")
   }
 
   # 2) tick-size
@@ -486,19 +484,10 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = c
   else if (mm <= 60) 0.005
   else               0.010
 
-
-  # 3) taxa implícita
-  #        PU = 100000 / (1 + i)^(n/252)
-  #  ==>   i  = (100000/Pu)^(252/n) - 1
-  #        (i em pontos-percentuais: × 100)
   taxa <- 100 * ( (1e5 / pu)^(252 / n) - 1 )
-
-  # 4) tick-value (= |dPU/d(i)| · tick_size)
-  #        dPU/d(i) = (n/252)*100000/100*(1 + i)^{-(n/252)-1}
   deriv       <- (n/252) * 1e5/100 * (1 + taxa/100)^(-(n/252) - 1)
-  tick_value  <- deriv * tick_size        # já em módulo
+  tick_value  <- deriv * tick_size
 
-  # 5) saída
   return(list(
     dias_uteis  = n,
     taxa        = round(as.numeric(taxa),3),
@@ -512,6 +501,7 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = c
 #' @param row_date The date of the calculation.
 #' @param maturity The maturity date of the contract.
 #' @return The numeric rate.
+#' @importFrom bizdays bizdays create.calendar holidays
 #' @keywords internal
 get_DI_price <- function(price, row_date, maturity){
   fn <- .get_function_if_exists("calcular_taxa_futuro")
@@ -913,11 +903,11 @@ fix_pkg <- function(x) {
 #' @param init Start date.
 #' @param finit End date.
 #' @param rf_rate The risk-free rate.
-#' @param auto_rets Logical, for geometric returns.
+#' @param geometric Logical, for geometric returns.
 #' @param ativo_name An explicit name for the main asset.
 #' @return A large list containing all data and metrics prepared for the modules.
 #' @keywords internal
-.tplot_prepare <- function(ativo, benchs, init, finit, rf_rate, auto_rets = FALSE,
+.tplot_prepare <- function(ativo, benchs, init, finit, rf_rate, geometric = TRUE,
                            ativo_name = NULL,
                            verbose = getOption("tplot.verbose", FALSE)) {
   vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
@@ -1183,7 +1173,7 @@ fix_pkg <- function(x) {
         fetched_one <- tryCatch(od(sym,
                                    start_date   = init,
                                    end_date     = finit,
-                                   auto_returns = auto_rets),
+                                   auto_returns = geometric),
                                 error = function(e) NULL)
         if (.is_xts(fetched_one)) {
           dados_raw[[lab]] <- .subset_xts(fetched_one, init, finit)
@@ -1363,7 +1353,7 @@ fix_pkg <- function(x) {
   # 8) Risk-free handling (optional; default to 0 if not available)
   if (!is.null(rf_rate) && rf_rate %in% colnames(dados_trat)) {
     rf_final <- as.numeric(
-      Return.annualized(dados_trat[, rf_rate], geometric = auto_rets)[1, 1]
+      Return.annualized(dados_trat[, rf_rate], geometric = geometric)[1, 1]
     )
   } else {
     if (!is.null(rf_rate)) message("Risk free rate of '", rf_rate, "' not found. Using RF = 0.")
@@ -1371,8 +1361,8 @@ fix_pkg <- function(x) {
   }
 
   # 9) Metrics
-  car_anu    <- Return.annualized(carteira, geometric = auto_rets)
-  car_tot    <- Return.cumulative(carteira, geometric = auto_rets)
+  car_anu    <- Return.annualized(carteira, geometric = geometric)
+  car_tot    <- Return.cumulative(carteira, geometric = geometric)
   car_dd     <- maxDrawdown(carteira)
   # Annualize SD using detected periodicity of 'carteira'
   # Infer return frequency without xts::periodicity to avoid segfaults
@@ -1410,7 +1400,7 @@ fix_pkg <- function(x) {
   car_sort[is.infinite(car_sort)] <- 0
 
   carteira_df <- data.frame(
-    Ativos  = colnames(carteira),
+    Asset   = colnames(carteira),
     Total   = round(as.vector(car_tot * 100), 3),
     CAR     = round(as.vector(car_anu * 100), 2),
     MaxDD   = round(as.vector(car_dd * 100), 2),
@@ -1420,13 +1410,13 @@ fix_pkg <- function(x) {
     row.names = NULL,
     stringsAsFactors = FALSE
   )
-  if ("IPCA" %in% carteira_df$Ativos) {
-    ip <- which(carteira_df$Ativos == "IPCA")
+  if ("IPCA" %in% carteira_df$Asset) {
+    ip <- which(carteira_df$Asset == "IPCA")
     carteira_df[ip, c("MaxDD", "Std_Dev", "Sharpe", "Sortino")] <- "-"
   }
 
   # 10) Derived series for plots
-  if (isFALSE(auto_rets)) {
+  if (isFALSE(geometric)) {
     ret_cum <- cumsum(carteira) * 100
   } else {
     ret_cum <- (cumprod(1 + carteira) - 1) * 100
@@ -1434,17 +1424,36 @@ fix_pkg <- function(x) {
   ret_sim <- carteira * 100
   dds     <- Drawdowns(carteira) * 100
   datas   <- as.numeric(as.POSIXct(index(ret_cum))) * 1000
+  # English aliases
+  cum_returns    <- ret_cum
+  period_returns <- ret_sim
+  drawdowns      <- dds
+  timestamps     <- datas
 
   # Build monthly/annual tables per series using each one's full history
   lista_tabs <- lapply(colnames(carteira_full), function(x) {
-    serie_x <- carteira_full[, x, drop = FALSE]
-    serie_x <- na.omit(serie_x)
-    if (NROW(serie_x) < 1) return(data.frame())
-    rentab_table_calc(serie_x, retornar = TRUE, geometric = auto_rets)
+    series_x <- carteira_full[, x, drop = FALSE]
+    series_x <- na.omit(series_x)
+    if (NROW(series_x) < 1) return(data.frame())
+    rentab_table_calc(series_x, retornar = TRUE, geometric = geometric)
   })
   names(lista_tabs) <- colnames(carteira_full)
+  returns_tables <- lista_tabs
 
   resultado <- list(
+    # Preferred English fields
+    asset          = ativo_name,
+    benchmarks     = benchs_labels,
+    start_date     = first(index(cum_returns)),
+    end_date       = last(index(cum_returns)),
+    portfolio      = carteira,
+    stats_df       = carteira_df,
+    cum_returns    = cum_returns,
+    period_returns = period_returns,
+    drawdowns      = drawdowns,
+    timestamps     = timestamps,
+    returns_tables = returns_tables,
+    # Legacy fields for backward-compatibility
     ativo       = ativo_name,
     benchs      = benchs_labels,
     init_date   = first(index(ret_cum)),
@@ -1473,11 +1482,11 @@ fix_pkg <- function(x) {
 #' @keywords internal
 .tplot_render_json <- function(prep, modules) {
   out <- list()
-  if("stats"      %in% modules) out$stats      <- stats_json(prep$carteira_df)
-  if("cumulative" %in% modules) out$cumulative <- series_json(prep$ret_cum, prep$datas)
-  if("period"     %in% modules) out$period     <- series_json(prep$ret_sim, prep$datas)
-  if("drawdowns"  %in% modules) out$drawdowns  <- series_json(prep$dds,     prep$datas)
-  if("table"      %in% modules) out$table      <- rentab_json(prep$lista_tabs)
+  if("stats"      %in% modules) out$stats      <- stats_json(prep$stats_df %||% prep$carteira_df)
+  if("cumulative" %in% modules) out$cumulative <- series_json(prep$cum_returns    %||% prep$ret_cum, prep$timestamps %||% prep$datas)
+  if("period"     %in% modules) out$period     <- series_json(prep$period_returns %||% prep$ret_sim, prep$timestamps %||% prep$datas)
+  if("drawdowns"  %in% modules) out$drawdowns  <- series_json(prep$drawdowns      %||% prep$dds,     prep$timestamps %||% prep$datas)
+  if("table"      %in% modules) out$table      <- rentab_json(prep$returns_tables %||% prep$lista_tabs)
   jsonlite::toJSON(out, auto_unbox=TRUE, pretty=TRUE, na="null")
 }
 
@@ -1496,7 +1505,7 @@ fix_pkg <- function(x) {
     tags$meta(name="viewport",
               content="width=device-width, initial-scale=1"),
     tags$title(sprintf("tplot_%s_%s",
-                       prep$ativo,
+                       (prep$asset %||% prep$ativo),
                        format(Sys.time(), "%Y%m%d_%H%M%S"))),
     tags$style(HTML(sprintf(
       "html,body{margin:0;padding:0;background:%s;}
@@ -1508,8 +1517,8 @@ fix_pkg <- function(x) {
 
   sync_with_candles <- "candles" %in% modules
 
-  data_inicial <- format(prep$init_date, "%d-%m-%Y")
-  data_final   <- format(prep$finit_date, "%d-%m-%Y")
+  data_inicial <- format((prep$start_date %||% prep$init_date), "%d-%m-%Y")
+  data_final   <- format((prep$end_date   %||% prep$finit_date), "%d-%m-%Y")
   linha_datas  <- tags$div(
     style = sprintf(
       "text-align:right;font-family:%s;font-size:12px;font-weight:bold;
@@ -1523,48 +1532,49 @@ fix_pkg <- function(x) {
 
   for (mod in modules) {
     ui <- switch(mod,
-                 stats      = tagList(stats_module(prep$carteira_df,
-                                                   prep$ativo,
-                                                   prep$benchs,
+                 stats      = tagList(stats_module(prep$stats_df %||% prep$carteira_df,
+                                                   (prep$asset %||% prep$ativo),
+                                                   (prep$benchmarks %||% prep$benchs),
                                                    theme),
                                       linha_datas),
-                 candles    = candles_module(prep$mktdata,
+                 candles    = candles_module(prep$market_data %||% prep$mktdata,
                                              prep$trades,
-                                             theme),
-                 volume     = volume_module(prep$mktdata,
+                                             theme,
+                                             (prep$asset %||% prep$ativo)),
+                 volume     = volume_module(prep$market_data %||% prep$mktdata,
                                             theme),
-                 position   = position_module(prep$mktdata,
+                 position   = position_module(prep$market_data %||% prep$mktdata,
                                               prep$trades,
                                               theme,
-                                              FALSE),
-                 cumulative = cumret_module(prep$ret_cum,
-                                            prep$datas,
-                                            prep$ativo,
-                                            prep$benchs,
+                                              TRUE),
+                 cumulative = cumret_module(prep$cum_returns %||% prep$ret_cum,
+                                            prep$timestamps %||% prep$datas,
+                                            (prep$asset %||% prep$ativo),
+                                            (prep$benchmarks %||% prep$benchs),
                                             theme,
                                             link_flag,
                                             sync_with_candles),
-                 rolling = rollingret_module(prep$ret_cum,
-                                             prep$datas,
-                                             prep$ativo,
-                                             prep$benchs,
+                 rolling = rollingret_module(prep$cum_returns %||% prep$ret_cum,
+                                             prep$timestamps %||% prep$datas,
+                                             (prep$asset %||% prep$ativo),
+                                             (prep$benchmarks %||% prep$benchs),
                                              theme,
                                              sync_with_candles),
-                 period     = periodret_module(prep$ret_sim,
-                                               prep$datas,
-                                               prep$ativo,
-                                               prep$benchs,
+                 period     = periodret_module(prep$period_returns %||% prep$ret_sim,
+                                               prep$timestamps %||% prep$datas,
+                                               (prep$asset %||% prep$ativo),
+                                               (prep$benchmarks %||% prep$benchs),
                                                theme,
                                                sync_with_candles),
-                 drawdowns  = drawdown_module(prep$dds,
-                                              prep$datas,
-                                              prep$ativo,
-                                              prep$benchs,
+                 drawdowns  = drawdown_module(prep$drawdowns %||% prep$dds,
+                                              prep$timestamps %||% prep$datas,
+                                              (prep$asset %||% prep$ativo),
+                                              (prep$benchmarks %||% prep$benchs),
                                               theme,
                                               sync_with_candles),
-                 table      = rentab_table_module(prep$lista_tabs,
-                                                  prep$ativo,
-                                                  prep$benchs,
+                 table      = rentab_table_module(prep$returns_tables %||% prep$lista_tabs,
+                                                  (prep$asset %||% prep$ativo),
+                                                  (prep$benchmarks %||% prep$benchs),
                                                   theme),
                  footer     = footer_module(theme)
     )
@@ -1579,7 +1589,7 @@ fix_pkg <- function(x) {
     page
   )
   doc <- tags$html(
-    lang = "pt-BR",
+    lang = "en",
     tags$head(head_tags),
     tags$body(container)
   )
@@ -1599,7 +1609,7 @@ fix_pkg <- function(x) {
              recursive = TRUE,
              showWarnings = FALSE)
   nome    <- sprintf("tplot_%s_%s.html",
-                     prep$ativo,
+                     (prep$asset %||% prep$ativo),
                      format(Sys.time(), "%Y%m%d_%H%M%S"))
   destino <- file.path(output_dir, nome)
   ## 7) salva com htmltools::save_html()
@@ -1635,130 +1645,303 @@ fix_pkg <- function(x) {
   if (missing(output_dir) || is.null(output_dir)) {
     output_dir <- getwd()
   }
-  # e, se quiser, transforme em caminho absoluto
+
+  # Normalize output dir
   od <- normalizePath(output_dir, mustWork = FALSE)
   if (!dir.exists(od)) dir.create(od, recursive = TRUE, showWarnings = FALSE)
-  if(!"cumulative" %in% modules)
-    stop("Module 'cumulative' rendered in %.2f seconds.")
-  # prepara data.frames _long_
-  df_cum <- data.frame(
-    date = as.Date(index(prep$ret_cum)),
-    as.data.frame(prep$ret_cum, check.names=FALSE)
-  )
-  df_sim <- data.frame(
-    date = as.Date(index(prep$ret_sim)),
-    as.data.frame(prep$ret_sim, check.names=FALSE)
-  )
-  df_dd <- data.frame(
-    date = as.Date(index(prep$dds)),
-    as.data.frame(prep$dds, check.names=FALSE)
-  )
-  df_cum_l <- pivot_longer(df_cum, -date, names_to="series", values_to="value")
-  df_sim_l <- pivot_longer(df_sim, -date, names_to="series", values_to="value")
-  df_dd_l  <- pivot_longer(df_dd,  -date, names_to="series", values_to="value")
 
-  base_theme <- theme_minimal(base_family=theme$font_family) +
-    theme(
-      plot.background  = element_rect(fill=theme$colors$page_bg,  color=NA),
-      panel.background = element_rect(fill=theme$colors$chart_bg, color=NA),
-      plot.title       = element_text(size=theme$font_sizes$title,
-                                      color=theme$colors$title_txt, face="bold"),
-      axis.text        = element_text(size=theme$font_sizes$axis,
-                                      color=theme$colors$axis_txt),
-      axis.title       = element_text(size=theme$font_sizes$axis,
-                                      color=theme$colors$axis_txt),
-      legend.text      = element_text(size=theme$font_sizes$legend,
-                                      color=theme$colors$legend_txt)
-    )
-  p1 <- ggplot(df_cum_l, aes(date,value,color=series)) +
-    geom_line(size=1) +
-    labs(title="Cumulative Returns", x=NULL, y="Percentual") +
-    scale_y_continuous(labels=label_number(scale=1,suffix="%")) +
-    scale_color_manual(values=theme$palette) +
-    base_theme + theme(legend.position="bottom")
-  p2 <- ggplot(df_sim_l, aes(date,value,color=series)) +
-    geom_line(size=0.8) +
-    labs(title="Periodic Returns", x=NULL, y="Percentual") +
-    scale_y_continuous(labels=label_number(scale=1,suffix="%")) +
-    scale_color_manual(values=theme$palette) +
-    base_theme + theme(legend.position="none")
-  p3 <- ggplot(df_dd_l, aes(date,value,color=series)) +
-    geom_line(size=0.8) +
-    labs(title="Drawdowns", x=NULL, y="Percentual") +
-    scale_y_continuous(labels=label_number(scale=1,suffix="%")) +
-    scale_color_manual(values=theme$palette) +
-    base_theme + theme(legend.position="none")
-  tt_stats <- gridExtra::ttheme_minimal(
-    core    = list(fg_params=list(fontfamily=theme$font_family,
-                                  fontsize=theme$font_sizes$table,
-                                  col=theme$colors$table_row_txt)),
-    colhead = list(fg_params=list(fontfamily=theme$font_family,
-                                  fontsize=theme$font_sizes$table,
-                                  col=theme$colors$table_header_txt,
-                                  fontface="bold"),
-                   bg_params=list(fill=theme$colors$table_header_bg))
-  )
-  stats_title <- textGrob("Performance Statistics",
-                          gp=gpar(fontfamily=theme$font_family,
-                                  fontsize=theme$font_sizes$title,
-                                  col=theme$colors$title_txt,
-                                  fontface="bold"))
-  stats_tbl <- tableGrob(prep$carteira_df, rows=NULL, theme=tt_stats)
-  date_lbl  <- textGrob(
-    paste0(format(prep$init_date,"%d-%m-%Y"), " a ",
-           format(prep$finit_date,"%d-%m-%Y")),
-    x=1,hjust=1,
-    gp=gpar(fontfamily=theme$font_family,
-            fontsize=theme$font_sizes$table,
-            col=theme$colors$page_txt)
-  )
-  month_grobs <- lapply(names(prep$lista_tabs), function(nm){
-    tab <- prep$lista_tabs[[nm]]
-    df2 <- cbind(Year=rownames(tab), as.data.frame(tab,check.names=FALSE))
-    pal <- theme$palette[match(nm, c(prep$ativo, prep$benchs))]
-    fill<- grDevices::adjustcolor(pal, alpha.f=0.2)
-    tt  <- gridExtra::ttheme_minimal(
-      core    = list(fg_params=list(fontfamily=theme$font_family,
-                                    fontsize=theme$font_sizes$table,
-                                    col=theme$colors$table_row_txt),
-                     bg_params=list(fill=fill)),
-      colhead = list(fg_params=list(fontfamily=theme$font_family,
-                                    fontsize=theme$font_sizes$table,
-                                    col=theme$colors$table_header_txt,
-                                    fontface="bold"),
-                     bg_params=list(fill=theme$colors$table_header_bg))
-    )
-    tableGrob(df2, rows=NULL, theme=tt)
-  })
-  footer_lbl <- textGrob(theme$footer_text,
-                         gp=gpar(fontfamily=theme$font_family,
-                                 fontsize=theme$font_sizes$table,
-                                 col=theme$colors$footer_txt,
-                                 fontface="bold"),
-                         x=0.5,hjust=0.5)
-  grobs   <- c(list(stats_title, stats_tbl, date_lbl, p1, p2, p3),
-               month_grobs, list(footer_lbl))
-  heights <- c(0.4,1.2,0.2,2,1,1,
-               rep(0.8, length(month_grobs)), 0.3)
-  # grava em disco
-  od <- path.expand(output_dir)
-  if(!dir.exists(od)) dir.create(od, recursive=TRUE)
-  fname <- sprintf("tplot_%s_%s.%s",
-                   prep$ativo,
-                   format(Sys.time(),"%Y%m%d_%H%M%S"),
-                   format)
-  fpath <- file.path(od, fname)
-  w <- 1200
-  h <- 300 * sum(heights) / 1.2
-  if(format=="png"){
-    ragg::agg_png(fpath, width=w, height=h, units="px", res=150,
-                  background=theme$colors$page_bg)
-  } else {
-    ragg::agg_jpeg(fpath, width=w, height=h, units="px", res=150,
-                   quality=0.9, background=theme$colors$page_bg)
+  # Ensure we at least have cumulative, otherwise static layout doesn't make sense
+  if (!"cumulative" %in% modules) {
+    stop("Static image requires module 'cumulative'.")
   }
-  grid.arrange(grobs=grobs, ncol=1, heights=heights)
-  dev.off()
-  message("  Saved chart at: ", fpath)
-  return(invisible(fpath))
+
+  # Font fallback if theme font not installed (prevents ugly fallback issues)
+  font_family <- theme$font_family
+  if (is.character(font_family) && nzchar(font_family)) {
+    if (requireNamespace("systemfonts", quietly = TRUE)) {
+      mf <- tryCatch(systemfonts::match_font(font_family), error = function(e) NULL)
+      if (is.null(mf) || is.na(mf$path) || !nzchar(mf$path)) font_family <- "sans"
+    } else {
+      font_family <- font_family # let ragg/system pick fallback if present
+    }
+  } else {
+    font_family <- "sans"
+  }
+
+  # Build long frames for ggplot
+  df_cum <- data.frame(date = as.Date(index(prep$cum_returns %||% prep$ret_cum)),
+                       as.data.frame(prep$cum_returns %||% prep$ret_cum, check.names = FALSE))
+  df_sim <- data.frame(date = as.Date(index(prep$period_returns %||% prep$ret_sim)),
+                       as.data.frame(prep$period_returns %||% prep$ret_sim, check.names = FALSE))
+  df_dd  <- data.frame(date = as.Date(index(prep$drawdowns %||% prep$dds)),
+                       as.data.frame(prep$drawdowns %||% prep$dds, check.names = FALSE))
+  df_cum_l <- pivot_longer(df_cum, -date, names_to = "series", values_to = "value")
+  df_sim_l <- pivot_longer(df_sim, -date, names_to = "series", values_to = "value")
+  df_dd_l  <- pivot_longer(df_dd,  -date, names_to = "series", values_to = "value")
+
+  # Helper for subtle grid lines on both light/dark themes
+  .is_dark <- function(hex) {
+    x <- tryCatch(grDevices::col2rgb(hex)/255, error = function(e) matrix(c(0,0,0), ncol=1))
+    # luminance approx
+    lum <- 0.2126*x[1,1] + 0.7152*x[2,1] + 0.0722*x[3,1]
+    lum < 0.5
+  }
+  .mix_col <- function(col, with = if (.is_dark(theme$colors$chart_bg)) "#FFFFFF" else "#000000", alpha = 0.15) {
+    a <- tryCatch(grDevices::col2rgb(col), error = function(e) matrix(c(200,200,200), ncol=1))
+    b <- tryCatch(grDevices::col2rgb(with), error = function(e) matrix(c(255,255,255), ncol=1))
+    m <- pmax(pmin(round((1-alpha)*a + alpha*b), 255), 0)
+    grDevices::rgb(m[1,1], m[2,1], m[3,1], alpha = 0.8, maxColorValue = 255)
+  }
+  grid_col_major <- .mix_col(theme$colors$axis_txt, alpha = if (.is_dark(theme$colors$chart_bg)) 0.25 else 0.12)
+  grid_col_minor <- .mix_col(theme$colors$axis_txt, alpha = if (.is_dark(theme$colors$chart_bg)) 0.12 else 0.06)
+
+  base_theme <- ggplot2::theme_minimal(base_family = font_family) +
+    ggplot2::theme(
+      plot.background  = ggplot2::element_rect(fill = theme$colors$page_bg,  color = NA),
+      panel.background = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
+      plot.title       = ggplot2::element_text(size = theme$font_sizes$title,
+                                      color = theme$colors$title_txt, face = "bold"),
+      axis.text        = ggplot2::element_text(size = theme$font_sizes$axis,
+                                      color = theme$colors$axis_txt, face = "bold"),
+      axis.title       = ggplot2::element_text(size = theme$font_sizes$axis,
+                                      color = theme$colors$axis_txt, face = "bold"),
+      legend.text      = ggplot2::element_text(size = theme$font_sizes$legend,
+                                      color = theme$colors$legend_txt),
+      legend.title     = ggplot2::element_blank(),
+      legend.position  = "bottom",
+      legend.background    = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
+      legend.box.background = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
+      panel.grid.major = ggplot2::element_line(color = grid_col_major, linewidth = 0.3),
+      panel.grid.minor = ggplot2::element_line(color = grid_col_minor, linewidth = 0.2),
+      plot.margin      = ggplot2::margin(8, 16, 8, 16)
+    )
+
+  # Axis helpers and limits aligned with HTML modules
+  y_cum_min <- suppressWarnings(min(df_cum_l$value, na.rm = TRUE))
+  y_cum_max <- suppressWarnings(max(df_cum_l$value, na.rm = TRUE))
+  y_dd_min  <- suppressWarnings(min(df_dd_l$value,  na.rm = TRUE))
+
+  p1 <- ggplot2::ggplot(df_cum_l, ggplot2::aes(date, value, color = series)) +
+    ggplot2::geom_line(size = 0.9) +
+    labs(title = "Cumulative Returns", x = NULL, y = "Percentage") +
+    ggplot2::scale_y_continuous(labels = scales::label_number(scale = 1, suffix = "%"), limits = c(y_cum_min, y_cum_max), expand = c(0.01, 0)) +
+    ggplot2::scale_x_date(expand = c(0.01, 0)) +
+    ggplot2::scale_color_manual(values = theme$palette) +
+    ggplot2::guides(color = ggplot2::guide_legend(nrow = 1)) +
+    base_theme
+
+  p2 <- ggplot2::ggplot(df_sim_l, ggplot2::aes(date, value, color = series)) +
+    ggplot2::geom_line(size = 0.8) +
+    labs(title = "Periodic Returns", x = NULL, y = "Percentage") +
+    ggplot2::scale_y_continuous(labels = scales::label_number(scale = 1, suffix = "%"), expand = c(0.01, 0)) +
+    ggplot2::scale_x_date(expand = c(0.01, 0)) +
+    ggplot2::scale_color_manual(values = theme$palette) +
+    base_theme + ggplot2::theme(legend.position = "none")
+
+  p3 <- ggplot2::ggplot(df_dd_l, ggplot2::aes(date, value, color = series)) +
+    ggplot2::geom_line(size = 0.8) +
+    labs(title = "Drawdowns", x = NULL, y = "Percentage") +
+    ggplot2::scale_y_continuous(labels = scales::label_number(scale = 1, suffix = "%"), limits = c(y_dd_min, 0), expand = c(0.01, 0)) +
+    ggplot2::scale_x_date(expand = c(0.01, 0)) +
+    ggplot2::scale_color_manual(values = theme$palette) +
+    base_theme + ggplot2::theme(legend.position = "none")
+
+  # Tables styling closer to HTML
+  # Stats table styling: per-row tinted background using series palette
+  stats_rows <- nrow(prep$stats_df %||% prep$carteira_df)
+  stats_cols <- ncol(prep$stats_df %||% prep$carteira_df)
+  series_order <- c((prep$asset %||% prep$ativo), (prep$benchmarks %||% prep$benchs))
+  row_palette <- vapply(seq_len(stats_rows), function(i){
+    nm <- as.character((prep$stats_df %||% prep$carteira_df)$Asset[i])
+    pal_idx <- match(nm, series_order)
+    base_col <- if (!is.na(pal_idx) && pal_idx <= length(theme$palette)) theme$palette[pal_idx] else theme$palette[1]
+    grDevices::adjustcolor(base_col, alpha.f = 0.20)
+  }, character(1))
+  # build a fill matrix repeating row colors for all body columns
+  stats_fill_mat <- matrix(rep(row_palette, stats_cols), nrow = stats_rows, ncol = stats_cols, byrow = FALSE)
+  tt_stats <- gridExtra::ttheme_minimal(
+    core    = list(
+      fg_params = list(fontfamily = font_family,
+                       fontsize = theme$font_sizes$table,
+                       col = theme$colors$table_row_txt),
+      bg_params = list(fill = stats_fill_mat,
+                       col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+    ),
+    colhead = list(
+      fg_params = list(fontfamily = font_family,
+                       fontsize = theme$font_sizes$table,
+                       col = theme$colors$table_header_txt,
+                       fontface = "bold"),
+      bg_params = list(fill = theme$colors$table_header_bg,
+                       col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+    )
+  )
+
+  stats_tbl <- tableGrob(prep$stats_df %||% prep$carteira_df, rows = NULL, theme = tt_stats)
+  # Make table stretch to full width
+  stats_tbl$widths <- grid::unit(rep(1, ncol(prep$stats_df %||% prep$carteira_df)), "null")
+
+  date_lbl  <- textGrob(
+    paste0(format((prep$start_date %||% prep$init_date), "%d-%m-%Y"), " to ", format((prep$end_date %||% prep$finit_date), "%d-%m-%Y")),
+    x = 1, hjust = 1,
+    gp = gpar(fontfamily = font_family, fontsize = theme$font_sizes$table, col = theme$colors$page_txt)
+  )
+
+  month_names <- names(prep$returns_tables %||% prep$lista_tabs)[vapply(prep$returns_tables %||% prep$lista_tabs, function(t) NROW(t) > 0, logical(1))]
+  month_grobs <- lapply(month_names, function(nm) {
+    tab <- (prep$returns_tables %||% prep$lista_tabs)[[nm]]
+    df2 <- cbind(Year = rownames(tab), as.data.frame(tab, check.names = FALSE))
+    pal <- theme$palette[match(nm, c((prep$asset %||% prep$ativo), (prep$benchmarks %||% prep$benchs)))]
+    fill <- grDevices::adjustcolor(ifelse(is.na(pal), theme$palette[1], pal), alpha.f = 0.20)
+    # Build fill matrix for all rows/cols of this table
+    if (NROW(df2) > 0) {
+      fill_mat <- matrix(fill, nrow = NROW(df2), ncol = NCOL(df2))
+    } else {
+      fill_mat <- NULL
+    }
+    tt  <- gridExtra::ttheme_minimal(
+      core    = list(
+        fg_params = list(fontfamily = font_family,
+                         fontsize = theme$font_sizes$table,
+                         col = theme$colors$table_row_txt),
+        bg_params = list(fill = fill_mat,
+                         col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+      ),
+      colhead = list(
+        fg_params = list(fontfamily = font_family,
+                         fontsize = theme$font_sizes$table,
+                         col = theme$colors$table_header_txt,
+                         fontface = "bold"),
+        bg_params = list(fill = theme$colors$table_header_bg,
+                         col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+      )
+    )
+    tg <- tableGrob(df2, rows = NULL, theme = tt)
+    tg$widths <- grid::unit(rep(1, ncol(df2)), "null")
+    tg
+  })
+
+  footer_lbl <- textGrob(theme$footer_text,
+                         gp = gpar(fontfamily = font_family,
+                                   fontsize = theme$font_sizes$table,
+                                   col = theme$colors$footer_txt,
+                                   fontface = "bold"),
+                         x = 0.5, hjust = 0.5)
+
+  # Helper: wrap grob with left/right margins to match chart margins
+  wrap_with_margins <- function(g, left_pt = 16, right_pt = 16) {
+    gridExtra::arrangeGrob(
+      grobs = list(grid::nullGrob(), g, grid::nullGrob()),
+      ncol = 3,
+      widths = grid::unit.c(grid::unit(left_pt, "pt"), grid::unit(1, "null"), grid::unit(right_pt, "pt"))
+    )
+  }
+
+  stats_tbl_wrapped <- wrap_with_margins(stats_tbl)
+  date_lbl_wrapped  <- wrap_with_margins(date_lbl)
+  footer_wrapped    <- wrap_with_margins(footer_lbl)
+  month_wrapped     <- lapply(month_grobs, wrap_with_margins)
+
+  # Estimate pixel heights for each section
+  row_h_px <- max(24, round(theme$font_sizes$table * 2.2))
+  stats_body_px  <- 20 + (stats_rows + 1) * row_h_px
+  date_px        <- 24
+  cum_px         <- 420
+  per_px         <- 300
+  dd_px          <- 260
+  footer_px      <- 32
+  months_px      <- vapply(month_names, function(nm){
+    tab <- (prep$returns_tables %||% prep$lista_tabs)[[nm]]
+    20 + (NROW(tab) + 1) * row_h_px
+  }, numeric(1))
+
+  # Page composition with optional splitting for very tall outputs
+  width_px <- 1600
+  res_dpi  <- 200
+  max_page_px <- getOption("tplot.image_max_height", 8000)
+
+  # Page 1 base sections
+  base_grobs   <- list(stats_tbl_wrapped, date_lbl_wrapped, p1, p2, p3)
+  base_heights <- c(stats_body_px, date_px, cum_px, per_px, dd_px)
+
+  # Fit as many monthly tables as possible on page 1
+  available_px <- max_page_px - sum(base_heights) - footer_px
+  take <- 0L
+  if (length(months_px)) {
+    cs <- cumsum(months_px)
+    take <- max(which(cs <= available_px), na.rm = TRUE)
+    if (!is.finite(take)) take <- 0L
+  }
+  page_grobs   <- c(base_grobs, if (take > 0) month_wrapped[seq_len(take)] else list(), list(footer_wrapped))
+  page_heights <- c(base_heights, if (take > 0) months_px[seq_len(take)] else numeric(0), footer_px)
+
+  # Function to write one page
+  write_page <- function(page_grobs, page_heights, suffix) {
+    heights_units <- page_heights / 40  # convert px to relative weights
+    composed <- gridExtra::arrangeGrob(grobs = page_grobs, ncol = 1, heights = heights_units)
+    fname <- sprintf("tplot_%s_%s%s.%s", (prep$asset %||% prep$ativo), format(Sys.time(), "%Y%m%d_%H%M%S"), suffix, format)
+    fpath <- file.path(od, fname)
+    height_px <- max(1200, round(sum(page_heights) * 1.02))
+    if (identical(format, "png")) {
+      if (requireNamespace("ragg", quietly = TRUE)) {
+        ragg::agg_png(fpath, width = width_px, height = height_px, units = "px", res = res_dpi,
+                      background = theme$colors$page_bg)
+      } else {
+        grDevices::png(fpath, width = width_px, height = height_px, res = res_dpi, bg = theme$colors$page_bg)
+      }
+    } else {
+      if (requireNamespace("ragg", quietly = TRUE)) {
+        ragg::agg_jpeg(fpath, width = width_px, height = height_px, units = "px", res = res_dpi,
+                       quality = 0.95, background = theme$colors$page_bg)
+      } else {
+        grDevices::jpeg(fpath, width = width_px, height = height_px, quality = 95, res = res_dpi, bg = theme$colors$page_bg)
+      }
+    }
+    grid::grid.draw(composed)
+    grDevices::dev.off()
+
+    # RStudio plotting
+    if (requireNamespace("rstudioapi", quietly = TRUE)) {
+      ok <- tryCatch(isTRUE(rstudioapi::isAvailable()), error = function(e) FALSE)
+      if (ok) {
+        grid::grid.newpage(); grid::grid.draw(composed)
+      }
+    }
+
+    message("  Saved chart at: ", fpath)
+    fpath
+  }
+
+  paths <- character(0)
+  paths <- c(paths, write_page(page_grobs, page_heights, suffix = ""))
+
+  # Remaining monthly tables go to subsequent pages
+  if (take < length(month_wrapped)) {
+    idx <- take + 1
+    while (idx <= length(month_wrapped)) {
+      cur_grobs <- list(date_lbl_wrapped)
+      cur_heights <- c(date_px)
+      while (idx <= length(month_wrapped)) {
+        next_h <- months_px[idx]
+        if (sum(cur_heights) + next_h + footer_px > max_page_px) {
+          # if nothing fits yet, force at least one table on this page
+          if (length(cur_heights) == 1) {
+            cur_grobs   <- c(cur_grobs, month_wrapped[idx])
+            cur_heights <- c(cur_heights, next_h)
+            idx <- idx + 1
+          }
+          break
+        }
+        cur_grobs   <- c(cur_grobs, month_wrapped[idx])
+        cur_heights <- c(cur_heights, next_h)
+        idx <- idx + 1
+      }
+      # add footer to this page
+      cur_grobs   <- c(cur_grobs, list(footer_wrapped))
+      cur_heights <- c(cur_heights, footer_px)
+      paths <- c(paths, write_page(cur_grobs, cur_heights, suffix = sprintf("_p%d", length(paths) + 1)))
+    }
+  }
+
+  invisible(paths)
 }

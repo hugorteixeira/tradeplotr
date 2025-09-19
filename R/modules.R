@@ -1,13 +1,13 @@
 #' Renders the Performance Statistics Table Module
-#' @param carteira_df The data.frame with performance statistics.
-#' @param ativo The name of the main asset.
-#' @param benchs A character vector with benchmark names.
+#' @param stats_df The data.frame with performance statistics.
+#' @param asset The name of the main asset.
+#' @param benchmarks A character vector with benchmark names.
 #' @param theme The theme list object.
 #' @return An HTML object containing the statistics table.
 #' @keywords internal
-stats_module <- function(carteira_df, ativo, benchs, theme){
+stats_module <- function(stats_df, asset, benchmarks, theme){
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; todos <- c(ativo, benchs)
+  pal <- theme$palette; cl <- theme$colors; todos <- c(asset, benchmarks)
   html <- paste0(
     #"<h3 style='font-family:",theme$font_family,
     #";font-size:",theme$font_sizes$title,"px;font-weight:bold;margin:20px 0;",
@@ -20,7 +20,7 @@ stats_module <- function(carteira_df, ativo, benchs, theme){
     "background-color:",cl$page_bg,";border-collapse:collapse;'>"
   )
   html <- paste0(html,"<tr>")
-  for(coluna in colnames(carteira_df)){
+  for(coluna in colnames(stats_df)){
     html <- paste0(
       html,
       "<th style='background-color:",cl$table_header_bg,
@@ -32,21 +32,21 @@ stats_module <- function(carteira_df, ativo, benchs, theme){
     )
   }
   html <- paste0(html,"</tr>")
-  for(i in seq_len(nrow(carteira_df))){
+  for(i in seq_len(nrow(stats_df))){
     # safe color lookup: match ativo against palette, fallback to first color
-    pal_idx <- match(carteira_df$Ativos[i], todos)
+    pal_idx <- match(stats_df$Asset[i], todos)
     pal_col <- if (!is.na(pal_idx) && pal_idx <= length(pal)) pal[pal_idx] else pal[1]
     rgb_col <- tryCatch(grDevices::col2rgb(pal_col), error = function(e) matrix(c(200,200,200), ncol = 1))
     cor <- paste0("rgba(", paste(rgb_col[,1], collapse = ","), ",0.2)")
     html <- paste0(html,"<tr style='background-color:",cor,";'>")
-    for(j in seq_len(ncol(carteira_df))){
+    for(j in seq_len(ncol(stats_df))){
       html <- paste0(
         html,
         "<td style='padding:8px 12px;font-family:",theme$font_family,
         ";font-size:",theme$font_sizes$table,
         "px;color:",cl$table_row_txt,
         ";border:1px solid rgba(0,0,0,0.1);'>", # subtle border
-        carteira_df[i,j],"</td>"
+        stats_df[i,j],"</td>"
       )
     }
     html <- paste0(html,"</tr>")
@@ -59,25 +59,43 @@ stats_module <- function(carteira_df, ativo, benchs, theme){
 }
 
 #' Renders the Monthly/Annual Returns Table Module
-#' @param lista_tabelas A list of returns data.frames, one for each asset.
-#' @param ativo The name of the main asset.
-#' @param benchs A character vector with benchmark names.
+#' @param returns_tables A list of returns data.frames, one for each asset.
+#' @param asset The name of the main asset.
+#' @param benchmarks A character vector with benchmark names.
 #' @param theme The theme list object.
 #' @return An HTML object containing the returns tables.
 #' @keywords internal
-rentab_table_module <- function(lista_tabelas, ativo, benchs, theme){
+rentab_table_module <- function(returns_tables, asset, benchmarks, theme){
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; todos <- c(ativo, benchs)
+  pal <- theme$palette; cl <- theme$colors; todos <- c(asset, benchmarks)
   html <- ""
-  for(nome in names(lista_tabelas)){
-    dados <- lista_tabelas[[nome]]; anos <- nrow(dados)
+  for(nome in names(returns_tables)){
+    dados <- returns_tables[[nome]]; anos <- nrow(dados)
+    # dynamic name cell: wrap long names into two lines and reduce font only for the name
+    name_cell <- (function(nm){
+      base_style <- paste0('background-color:',cl$table_header_bg,
+                           ';color:',cl$table_header_txt,
+                           ';padding:8px 12px;font-family:',theme$font_family,
+                           ';font-size:',theme$font_sizes$table,'px;font-weight:bold;',
+                           'border:1px solid rgba(0,0,0,0.1);')
+      if (!is.character(nm) || nchar(nm) <= 16) {
+        return(paste0('<th style="', base_style, '">', nm, '</th>'))
+      }
+      # Try to split at underscore near 16 chars; fallback to hard split
+      split_pos <- regexpr("_", substr(nm, 8, 20))
+      if (split_pos[1] > 0) {
+        cut_at <- 7 + split_pos[1] - 1
+      } else {
+        cut_at <- 16
+      }
+      first <- substr(nm, 1, cut_at)
+      second <- substr(nm, cut_at + 1, nchar(nm))
+      small <- max(8, theme$font_sizes$table - 2)
+      paste0('<th style="', base_style, '"><div style="white-space:normal;word-break:break-word;line-height:1.1;font-size:', small, 'px;">',
+             first, '<br>', second, '</div></th>')
+    })(nome)
     header <- paste0(
-      '<th style="background-color:',cl$table_header_bg,
-      ';color:',cl$table_header_txt,
-      ';padding:8px 12px;font-family:',theme$font_family,
-      ';font-size:',theme$font_sizes$table,'px;font-weight:bold;',
-      'border:1px solid rgba(0,0,0,0.1);">',
-      nome,'</th>',
+      name_cell,
       paste(
         sprintf(
           '<th style="background-color:%s;color:%s;padding:8px 12px;font-family:%s;font-size:%dpx;font-weight:bold;border:1px solid rgba(0,0,0,0.1);">%s</th>',
@@ -130,20 +148,20 @@ rentab_table_module <- function(lista_tabelas, ativo, benchs, theme){
       ))
   }
   termina <- Sys.time()
-  message(sprintf("Module 'rentab_table' rendered in %.2f seconds.",
+  message(sprintf("Module 'returns_table' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
   HTML(html)
 }
 
 #' Calculates the Monthly and Annual Returns Table
-#' @param nome_do_objeto An xts object with a single column of returns.
+#' @param series_object An xts object with a single column of returns.
 #' @param retornar Logical, whether to return the table.
 #' @param geometric Logical, whether to use geometric returns.
 #' @return A data.frame with the calendar returns.
 #' @keywords internal
-rentab_table_calc <- function(nome_do_objeto, retornar = TRUE, geometric = TRUE) {
+rentab_table_calc <- function(series_object, retornar = TRUE, geometric = geometric) {
   # Calculate the accumulated monthly returns
-  return_man_mensal <- apply.monthly(nome_do_objeto, colSums)
+  return_man_mensal <- apply.monthly(series_object, colSums)
   colnames(return_man_mensal) <- "Ano"
   return_man_mensal <- table.CalendarReturns(return_man_mensal, digits = 2, geometric = geometric)
 
@@ -161,8 +179,8 @@ rentab_table_calc <- function(nome_do_objeto, retornar = TRUE, geometric = TRUE)
     })
   }
 
-  nomes_meses_pt <- c("Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Total")
-  colnames(return_man_mensal_tabela) <- nomes_meses_pt
+  month_names_en <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Total")
+  colnames(return_man_mensal_tabela) <- month_names_en
 
   if (retornar) {
     return(return_man_mensal_tabela)
@@ -214,17 +232,18 @@ volume_module <- function(mktdata, theme){
       margin  = theme$hc_margin,
       backgroundColor = cl$chart_bg,
       renderTo = "volume-chart"
-    ) %>%
+    , zoomType = "x", panning = list(enabled = TRUE, type = "x"), panKey = "shift") %>%
     hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
     hc_yAxis(title = list(text = "Volume", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
              labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
     hc_plotOptions(column = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_add_series(data = vol_data, type = "column", color = pal[1], name = "Volume", showInLegend = FALSE) %>%
+    hc_tooltip(xDateFormat = "%Y-%m-%d") %>%
     hc_xAxis(
       type = "datetime",
       events = list(
         afterSetExtremes = JS(
-          "function(e) { var thisChart = this.chart; if (e.trigger !== 'syncExtremes') { Highcharts.each(Highcharts.charts, function(chart) { if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('candles'))) { if (chart.xAxis[0].setExtremes) { chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'}); } } }); } }"
+          "function(e) { var thisChart = this.chart; if (e.trigger !== 'syncExtremes') { Highcharts.each(Highcharts.charts, function(chart) { if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('position'))) { if (chart.xAxis[0].setExtremes) { chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'}); } } }); } }"
         )
       )
     )
@@ -233,7 +252,7 @@ volume_module <- function(mktdata, theme){
 
 # Override candles module with axis-safe, volume-free version
 #' @keywords internal
-candles_module <- function(mktdata, txns, theme){
+candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   comeca <- Sys.time()
   if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
   std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
@@ -252,6 +271,7 @@ candles_module <- function(mktdata, txns, theme){
   cdown <- candle_cfg$down_color %||% "#ff4d4d"
   cline <- candle_cfg$line_color %||% "#cccccc"
   clw   <- candle_cfg$line_width %||% 1
+  cheight <- candle_cfg$height %||% 500
   rs_txt  <- cl$range_selector_txt %||% cl$axis_txt
   rs_fill <- cl$range_selector_bg  %||% cl$chart_bg
   rs_stk  <- cl$range_selector_border %||% cl$axis_txt
@@ -261,12 +281,8 @@ candles_module <- function(mktdata, txns, theme){
     buys  <- txns[ txns$Txn.Qty >  0 , ]
     sells <- txns[ txns$Txn.Qty <  0 , ]
   }
-print(std)
   di_flag       <- isDI(std)
-  print(di_flag)
-  print("is di?")
   maturity_date <- attr(std, "maturity")
-  print(maturity_date)
   if (has_txns && di_flag && !is.null(maturity_date)){
     buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
     sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))
@@ -277,14 +293,28 @@ print(std)
     sells_data <- lapply(seq_len(nrow(sells)), function(i){ list(x = as.numeric(index(sells)[i]) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i])) })
   }
 
-  idx_ms <- as.numeric(index(std)) * 1000
+  # robust date->ms conversion (handles Date and POSIXct)
+  ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
+  idx_ms <- ix_to_ms(index(std))
   ohlc_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], open = as.numeric(std$Open[i]), high = as.numeric(std$High[i]), low = as.numeric(std$Low[i]), close = as.numeric(std$Close[i])) })
 
   abrev3 <- JS("function () { var raw=this.value+''; var hasPerc=raw.indexOf('%')!==-1; if(hasPerc) raw=raw.replace('%',''); var v=parseFloat(raw); if(isNaN(v)) return this.value; var neg=v<0?'-':''; v=Math.abs(v); var txt; if(v>=1e6){ txt=(v/1e6).toFixed(v>=1e7?0:1)+'M'; } else if(v>=1e3){ txt=(v/1e3).toFixed(v>=1e4?0:1)+'k'; } else if(v>=100){ txt=v.toFixed(0);} else { txt=v.toFixed(2);} return neg+txt+(hasPerc?'%':''); }")
 
   hc <- highcharter::highchart() %>%
-    hc_size(height = 500) %>%
-    hc_chart(spacing = theme$hc_spacing, margin = c(theme$hc_margin[1], theme$hc_margin[2], theme$hc_margin[3], theme$hc_margin[4]), backgroundColor = cl$chart_bg, renderTo = "candles-chart") %>%
+    hc_size(height = cheight) %>%
+    hc_chart(
+      spacing = theme$hc_spacing,
+      margin = c(theme$hc_margin[1], theme$hc_margin[2], theme$hc_margin[3], theme$hc_margin[4]),
+      backgroundColor = cl$chart_bg,
+      renderTo = "candles-chart",
+      zoomType = "x",
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift",
+      events = list(
+        load = JS("function(){ var xa=this.xAxis && this.xAxis[0]; if(xa){ xa.setExtremes(xa.dataMin, xa.dataMax, true, false); } }")
+      )
+    ) %>%
+    highcharter::hc_boost(enabled = TRUE, useGPUTranslations = TRUE, usePreAllocated = TRUE) %>%
     hc_add_yAxis(id = "price", startOnTick = FALSE, endOnTick = FALSE,
                  title = list(text = "Price", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
                  labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
@@ -292,30 +322,52 @@ print(std)
 
   # Add candlestick series with pre-evaluated style to avoid NSE scoping issues
   ohlc_style <- list(upColor = cup, color = cdown, lineColor = cline, lineWidth = clw, pointWidth = cw)
+  series_name <- if (!is.null(asset_name) && is.character(asset_name) && length(asset_name) == 1 && nzchar(asset_name)) asset_name else "Asset"
   hc <- do.call(highcharter::hc_add_series,
-                c(list(hc = hc, data = ohlc_data, type = "candlestick", name = "Ativo", yAxis = "price"),
+                c(list(hc = hc, data = ohlc_data, type = "candlestick", name = series_name, yAxis = "price"),
                   ohlc_style)) %>%
-    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = TRUE))) %>%
-    hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
-             events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
-    hc_rangeSelector(enabled = TRUE,
-                     buttonTheme = list(style = list(color = rs_txt), fill = rs_fill, stroke = rs_stk,
-                                        states = list(hover = list(fill = rs_fill, style = list(color = rs_txt)),
-                                                      select = list(fill = rs_fill, style = list(color = rs_txt)))),
-                     inputStyle = list(color = rs_txt), labelStyle = list(color = rs_txt)) %>%
+    hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = FALSE))) %>%
+    hc_xAxis(type = "datetime",
+             ordinal = FALSE,
+             minPadding = 0, maxPadding = 0,
+             labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
+             events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume')||chart.options.chart.renderTo.includes('position'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
+    hc_rangeSelector(
+      enabled = TRUE,
+      allButtonsEnabled = TRUE,
+      selected = 1,
+      buttons = list(
+        list(type = "ytd", text = "YTD"),
+        list(type = "all", text = "All")
+      ),
+      buttonTheme = list(
+        style = list(color = rs_txt),
+        fill  = rs_fill,
+        stroke = rs_stk,
+        states = list(
+          hover  = list(fill = rs_fill, style = list(color = rs_txt)),
+          select = list(fill = rs_fill, style = list(color = rs_txt))
+        )
+      ),
+      inputStyle = list(color = rs_txt),
+      labelStyle = list(color = rs_txt)
+    ) %>%
     hc_navigator(outlineWidth = 1, series = list(color = pal[1], lineWidth = 2, type = "areaspline", fillColor = "white"), handles = list(backgroundColor = pal[4], borderColor = pal[3])) %>%
     hc_scrollbar(barBackgroundColor = "lightgray", barBorderRadius = 7, barBorderWidth = 0, buttonBackgroundColor = "lightgray", buttonBorderWidth = 0, buttonArrowColor = "yellow", buttonBorderRadius = 7, rifleColor = "yellow", trackBackgroundColor = "white", trackBorderWidth = 1, trackBorderColor = "silver", trackBorderRadius = 7) %>%
+    hc_tooltip(xDateFormat = "%Y-%m-%d") %>%
     hc_legend(enabled = FALSE, verticalAlign = "bottom") %>%
     onRender("function(el,x){ Highcharts.setOptions({global:{useUTC:false}}); }")
 
   if (has_txns) {
     hc <- hc %>%
-      hc_add_series(data = buys_data, yAxis = "price", type = "scatter", name = "Compras", color = corx,
+      hc_add_series(data = buys_data, yAxis = "price", type = "scatter", name = "Buys", color = corx,
                     marker = list(enabled = TRUE, symbol = "triangle", radius = 5, fillColor = corx, lineColor = corx, lineWidth = 2),
-                    tooltip = list(headerFormat = "", pointFormat = "Buy<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE) %>%
-      hc_add_series(data = sells_data, yAxis = "price", type = "scatter", name = "Vendas", color = cory,
+                    tooltip = list(headerFormat = "", pointFormat = "Buy<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
+                    boostThreshold = 1) %>%
+      hc_add_series(data = sells_data, yAxis = "price", type = "scatter", name = "Sells", color = cory,
                     marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5, fillColor = cory, lineColor = cory, lineWidth = 1),
-                    tooltip = list(headerFormat = "", pointFormat = "Sell<br>Data: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE)
+                    tooltip = list(headerFormat = "", pointFormat = "Sell<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
+                    boostThreshold = 1)
   }
 
   termina <- Sys.time()
@@ -398,11 +450,15 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
 
   hc <- highcharter::highchart() %>%
     hc_size(height = 150) %>%
+    highcharter::hc_boost(enabled = TRUE, useGPUTranslations = TRUE, usePreAllocated = TRUE) %>%
     hc_chart(
       spacing         = theme$hc_spacing,
       margin          = theme$hc_margin,
       backgroundColor = theme$colors$chart_bg,
-      renderTo        = if (sync_with_candles) "position-chart" else NULL
+      renderTo        = if (sync_with_candles) "position-chart" else NULL,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift"
     ) %>%
     hc_xAxis(type = "datetime", lineWidth = 0, tickLength = 0, labels = list(enabled = FALSE)) %>%
     hc_yAxis(startOnTick = FALSE,
@@ -435,7 +491,15 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
       pointPadding = 0,
       groupPadding = 0,
       borderWidth  = 0,
-      showInLegend = FALSE
+      showInLegend = FALSE,
+      boostThreshold = 1
+    ) %>%
+    hc_tooltip(xDateFormat = "%Y-%m-%d") %>%
+    hc_xAxis(
+      type = "datetime",
+      events = list(
+        afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles')||chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume')||chart.options.chart.renderTo.includes('position'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}")
+      )
     )
   termina <- Sys.time()
   message(sprintf(
@@ -463,7 +527,10 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = c(theme$hc_margin[1],theme$hc_margin[2],theme$hc_margin[3]+45, theme$hc_margin[4]),
-      backgroundColor = cl$chart_bg
+      backgroundColor = cl$chart_bg,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift"
     ) %>%
     hc_xAxis(
       type = "datetime",
@@ -502,7 +569,8 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2
+      valueDecimals=2,
+      xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(
       enabled      = TRUE,
@@ -562,19 +630,24 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
       events = list(
         afterSetExtremes = JS("
         function(e){
+          var thisChart = this.chart;
+          if (e.trigger !== 'syncExtremes') {
+            Highcharts.each(Highcharts.charts, function(chart) {
+              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
+                if (chart.xAxis[0].setExtremes) {
+                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
+                }
+              }
+            });
+          }
           var minX = e.min, maxX = e.max,
               yMin = Infinity, yMax = -Infinity,
               chart = this.chart;
-
           Highcharts.each(chart.series, function(s){
             Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){
-                yMin = Math.min(yMin, p.y);
-                yMax = Math.max(yMax, p.y);
-              }
+              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
             });
           });
-
           chart.yAxis[0].setExtremes(yMin, yMax);
         }
       ")
@@ -601,12 +674,13 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
   } else if (is.matrix(ret_cum)) {
     M <- ret_cum
   } else {
-    stop("ret_cum deve ser xts, zoo, data.frame ou matrix")
+    stop("ret_cum must be xts, zoo, data.frame or matrix")
   }
   colnames(M) <- colnames(ret_cum)
   N <- 1 + M/100
-  k <- 22
   n <- nrow(N); p <- ncol(N)
+  # Use a dynamic window: 10% of available candles (at least 2)
+  k <- max(2L, as.integer(round(n * 0.10)))
   R <- matrix(NA_real_, n, p,
               dimnames = list(rownames(N), colnames(N)))
   if (n > k) {
@@ -621,7 +695,10 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
     hc_chart(
       spacing         = theme$hc_spacing,
       margin          = theme$hc_margin,
-      backgroundColor = cl$chart_bg
+      backgroundColor = cl$chart_bg,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift"
     ) %>%
     hc_xAxis(
       type   = "datetime",
@@ -633,7 +710,7 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       startOnTick = FALSE,
       endOnTick = FALSE,
       title = list(
-        text  = paste0("Rolling Rets. ", k, " p"),
+        text  = paste0("Rolling Returns ", k, " p"),
         style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
@@ -655,7 +732,8 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
     ) %>%
     hc_tooltip(
       pointFormat  = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals = 2
+      valueDecimals = 2,
+      xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(enabled = FALSE)
 
@@ -693,19 +771,24 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       events = list(
         afterSetExtremes = JS("
         function(e){
+          var thisChart = this.chart;
+          if (e.trigger !== 'syncExtremes') {
+            Highcharts.each(Highcharts.charts, function(chart) {
+              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
+                if (chart.xAxis[0].setExtremes) {
+                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
+                }
+              }
+            });
+          }
           var minX = e.min, maxX = e.max,
               yMin = Infinity, yMax = -Infinity,
               chart = this.chart;
-
           Highcharts.each(chart.series, function(s){
             Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){
-                yMin = Math.min(yMin, p.y);
-                yMax = Math.max(yMax, p.y);
-              }
+              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
             });
           });
-
           chart.yAxis[0].setExtremes(yMin, yMax);
         }
       ")
@@ -731,14 +814,17 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = theme$hc_margin,
-      backgroundColor = cl$chart_bg
+      backgroundColor = cl$chart_bg,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift"
     ) %>%
     hc_xAxis(type="datetime",      tickLength = 0,     lineWidth = 0,labels=list(enabled=FALSE)) %>%
     hc_yAxis(
       startOnTick = FALSE,
       endOnTick = FALSE,
       title = list(
-        text = "Period Rets",
+        text = "Periodic Returns",
         style= list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
@@ -760,7 +846,8 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2
+      valueDecimals=2,
+      xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(enabled=FALSE)
 
@@ -792,19 +879,24 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
       events = list(
         afterSetExtremes = JS("
         function(e){
+          var thisChart = this.chart;
+          if (e.trigger !== 'syncExtremes') {
+            Highcharts.each(Highcharts.charts, function(chart) {
+              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
+                if (chart.xAxis[0].setExtremes) {
+                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
+                }
+              }
+            });
+          }
           var minX = e.min, maxX = e.max,
               yMin = Infinity, yMax = -Infinity,
               chart = this.chart;
-
           Highcharts.each(chart.series, function(s){
             Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){
-                yMin = Math.min(yMin, p.y);
-                yMax = Math.max(yMax, p.y);
-              }
+              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
             });
           });
-
           chart.yAxis[0].setExtremes(yMin, yMax);
         }
       ")
@@ -830,7 +922,10 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     hc_chart(
       spacing        = theme$hc_spacing,
       margin         = theme$hc_margin,
-      backgroundColor= cl$chart_bg
+      backgroundColor= cl$chart_bg,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift"
     ) %>%
     hc_xAxis(type="datetime",    lineWidth = 0,     tickLength = 0,   labels=list(enabled=FALSE)) %>%
     hc_yAxis(
@@ -857,7 +952,8 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2
+      valueDecimals=2,
+      xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(enabled=FALSE)
 
@@ -889,19 +985,24 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
       events = list(
         afterSetExtremes = JS("
         function(e){
+          var thisChart = this.chart;
+          if (e.trigger !== 'syncExtremes') {
+            Highcharts.each(Highcharts.charts, function(chart) {
+              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
+                if (chart.xAxis[0].setExtremes) {
+                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
+                }
+              }
+            });
+          }
           var minX = e.min, maxX = e.max,
               yMin = Infinity, yMax = -Infinity,
               chart = this.chart;
-
           Highcharts.each(chart.series, function(s){
             Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){
-                yMin = Math.min(yMin, p.y);
-                yMax = Math.max(yMax, p.y);
-              }
+              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
             });
           });
-
           chart.yAxis[0].setExtremes(yMin, yMax);
         }
       ")

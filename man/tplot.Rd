@@ -9,7 +9,7 @@ tplot(
   init = "1994-08-01",
   finit = Sys.Date(),
   rf_rate = NULL,
-  auto_rets = FALSE,
+  geometric = TRUE,
   format = c("viewer", "html", "json", "png", "jpg"),
   output_dir = "tplots",
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
@@ -28,7 +28,7 @@ The first item is treated as the main asset, and the rest as benchmarks.}
 
 \item{rf_rate}{The risk-free rate for calculating metrics like the Sharpe Ratio.}
 
-\item{auto_rets}{Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.}
+\item{geometric}{Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.}
 
 \item{format}{The output format: "viewer", "html", "json", "png", or "jpg".}
 

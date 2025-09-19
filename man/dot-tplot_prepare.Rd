@@ -10,7 +10,7 @@
   init,
   finit,
   rf_rate,
-  auto_rets = FALSE,
+  geometric = TRUE,
   ativo_name = NULL,
   verbose = getOption("tplot.verbose", FALSE)
 )
@@ -26,7 +26,7 @@
 
 \item{rf_rate}{The risk-free rate.}
 
-\item{auto_rets}{Logical, for geometric returns.}
+\item{geometric}{Logical, for geometric returns.}
 
 \item{ativo_name}{An explicit name for the main asset.}
 }

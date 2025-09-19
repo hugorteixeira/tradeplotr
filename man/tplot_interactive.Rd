@@ -9,7 +9,7 @@ tplot_interactive(
   init = "1994-08-01",
   finit = Sys.Date(),
   rf_rate = NULL,
-  auto_rets = FALSE,
+  geometric = FALSE,
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
     "period", "drawdowns"),
   theme = default_theme()
@@ -24,7 +24,7 @@ tplot_interactive(
 
 \item{rf_rate}{The risk-free rate.}
 
-\item{auto_rets}{Logical, for geometric returns.}
+\item{geometric}{Logical, for geometric returns.}
 
 \item{modules}{Modules to display in the app.}
 
