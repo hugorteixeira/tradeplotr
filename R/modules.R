@@ -220,13 +220,13 @@ volume_module <- function(mktdata, theme){
   std <- std[!duplicated(index(std), fromLast = TRUE), ]
   if (!("Volume" %in% colnames(std))) return(NULL)
 
-  pal <- theme$palette; cl <- theme$colors
+  pal <- theme$palette; cl <- theme$colors; hei <- theme$volume$height
   ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
   idx_ms <- ix_to_ms(index(std))
   vol_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], y = as.numeric(std$Volume[i])) })
 
   hc <- highcharter::highchart() %>%
-    hc_size(height = 150) %>%
+    hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = theme$hc_margin,
@@ -254,9 +254,24 @@ volume_module <- function(mktdata, theme){
 #' @keywords internal
 candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   comeca <- Sys.time()
+  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
+  if (has_txns) {
+    cat(" -> Trades detected.\n")
+    buys  <- txns[ txns$Txn.Qty >  0 , ]
+    sells <- txns[ txns$Txn.Qty <  0 , ]
+  }
   if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
-  std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  if(.isDI(mktdata)){
+    cat(" -> Futures data detected (Brazilian DI).\n")
+    std <- mktdata
+  } else {
+    std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  }
   if (inherits(std, "try-error") || is.null(std)) return(NULL)
+
+  di_flag       <- .isDI(std)
+  maturity_date <- attr(std, "maturity")
+  if(!is.null(maturity_date)) cat(" -> Futures maturity date is",maturity_date,".\n")
 
   pal  <- theme$palette
   corx <- pal[1]
@@ -276,17 +291,10 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   rs_fill <- cl$range_selector_bg  %||% cl$chart_bg
   rs_stk  <- cl$range_selector_border %||% cl$axis_txt
 
-  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
-  if (has_txns) {
-    buys  <- txns[ txns$Txn.Qty >  0 , ]
-    sells <- txns[ txns$Txn.Qty <  0 , ]
-  }
-  di_flag       <- isDI(std)
-  maturity_date <- attr(std, "maturity")
   if (has_txns && di_flag && !is.null(maturity_date)){
     buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
     sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))
-  }
+     }
   if (has_txns) {
     if (di_flag){ tmp <- buys; buys <- sells; sells <- tmp }
     buys_data <- lapply(seq_len(nrow(buys)), function(i){ list(x = as.numeric(index(buys)[i]) * 1000,  y = as.numeric(buys$Txn.Price[i]),  z = as.numeric(buys$Txn.Qty[i])) })
@@ -447,9 +455,10 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
     list(value = 0, color = pal[3]),
     list(color      = pal[1])
   )
+  hei <- theme$position$height
 
   hc <- highcharter::highchart() %>%
-    hc_size(height = 150) %>%
+    hc_size(height = hei) %>%
     highcharter::hc_boost(enabled = TRUE, useGPUTranslations = TRUE, usePreAllocated = TRUE) %>%
     hc_chart(
       spacing         = theme$hc_spacing,
@@ -521,9 +530,9 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
 #' @keywords internal
 cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALSE, sync_with_candles=FALSE){
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors
+  pal <- theme$palette; cl <- theme$colors; hei <- theme$cumret$height
   hc <- highchart() %>%
-    hc_size(height = 350) %>%
+    hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = c(theme$hc_margin[1],theme$hc_margin[2],theme$hc_margin[3]+45, theme$hc_margin[4]),
@@ -688,10 +697,11 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
                        N[1:(n-k),   ,drop=FALSE] - 1) * 100
   }
   # 3) paleta e cores
+  hei <- theme$rollingret$height
   pal <- theme$palette
   cl  <- theme$colors
   hc <- highchart() %>%
-    hc_size(height = 150) %>%
+    hc_size(height = hei) %>%
     hc_chart(
       spacing         = theme$hc_spacing,
       margin          = theme$hc_margin,
@@ -808,9 +818,9 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
 #' @keywords internal
 periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_candles=FALSE){
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors
+  pal <- theme$palette; cl <- theme$colors; hei <- theme$periodret$height
   hc <- highchart() %>%
-    hc_size(height = 150) %>%
+    hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
       margin  = theme$hc_margin,
@@ -916,9 +926,9 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
 #' @keywords internal
 drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles=FALSE){
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors
+  pal <- theme$palette; cl <- theme$colors; hei <- theme$drawdown$height
   hc <- highchart() %>%
-    hc_size(height = 150) %>%
+    hc_size(height = hei) %>%
     hc_chart(
       spacing        = theme$hc_spacing,
       margin         = theme$hc_margin,
@@ -1010,3 +1020,141 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     )
   hc
 }
+drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles=FALSE){
+  comeca <- Sys.time()
+  pal <- theme$palette; cl <- theme$colors; hei <- theme$drawdown$height
+
+  hc <- highchart() %>%
+    hc_size(height = hei) %>%
+    hc_chart(
+      spacing        = theme$hc_spacing,
+      margin         = theme$hc_margin,
+      backgroundColor= cl$chart_bg,
+      zoomType = "x",
+      panning  = list(enabled = TRUE, type = "x"),
+      panKey   = "shift",
+      # Draw "Drawdown" inside the plot area (bottom-left) and keep it positioned on redraw
+      events = list(
+        load = JS(paste0(
+          "function(){",
+          "  var c = this;",
+          "  if (c.ddLabel) c.ddLabel.destroy();",
+          "  c.ddLabel = c.renderer.text('Drawdowns', ",
+          "    c.plotLeft + 6, c.plotTop + c.plotHeight - 8)",
+          "    .attr({ zIndex: 7 })",
+          "    .css({",
+          "      color: '", cl$title_txt, "',",
+          "      fontFamily: '", theme$font_family, "',",
+          "      fontSize: '", theme$font_sizes$title, "px',",
+          "      fontWeight: 'bold',",
+          "      opacity: 0.8",
+          "    }).add();",
+          "}"
+        )),
+        redraw = JS(
+          "function(){",
+          "  var c = this;",
+          "  if (c.ddLabel){",
+          "    c.ddLabel.attr({",
+          "      x: c.plotLeft + 6,",
+          "      y: c.plotTop + c.plotHeight - 8",
+          "    });",
+          "  }",
+          "}"
+        )
+      )
+    ) %>%
+    hc_xAxis(type="datetime", lineWidth = 0, tickLength = 0, labels=list(enabled=FALSE)) %>%
+    hc_yAxis(
+      # Axis title disabled; we'll render the label inside the plot with the renderer
+      title = list(
+        style= list(
+          color      = cl$title_txt,
+          fontFamily = theme$font_family,
+          fontSize   = paste0(theme$font_sizes$title,"px"),
+          fontWeight = "bold"
+        )
+      ),
+      # Keep Y-axis labels as they are
+      labels = list(
+        format="{value}%",
+        style = list(
+          color      = cl$axis_txt,
+          fontFamily = theme$font_family,
+          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontWeight = "bold"
+        )
+      ),
+      min = min(drawdowns, na.rm=TRUE),
+      max = 0
+    ) %>%
+    hc_tooltip(
+      pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
+      valueDecimals=2,
+      xDateFormat = "%Y-%m-%d"
+    ) %>%
+    hc_legend(enabled=FALSE)
+
+  if(sync_with_candles) {
+    hc <- hc %>% hc_chart(
+      spacing        = theme$hc_spacing,
+      margin         = theme$hc_margin,
+      backgroundColor= cl$chart_bg,
+      renderTo = "drawdown-chart"
+    )
+  }
+
+  hc <- hc %>% hc_add_series(
+    data=list_parse2(data.frame(x=datas,y=drawdowns[, ativo])),
+    type="line", name=ativo, color=pal[1], id=ativo
+  )
+
+  for(i in seq_along(benchs)){
+    hc <- hc %>% hc_add_series(
+      data=list_parse2(data.frame(x=datas,y=drawdowns[, benchs[i]])),
+      type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
+    )
+  }
+
+  termina <- Sys.time()
+  message(sprintf("Module 'drawdown' rendered in %.2f seconds.",
+                  as.numeric(difftime(termina, comeca, units = "secs"))))
+
+  hc <- hc %>%
+    hc_xAxis(
+      type="datetime",
+      events = list(
+        # Keep X-axis synchronized and dynamically set Y-axis extremes to visible range
+        afterSetExtremes = JS("
+        function(e){
+          var thisChart = this.chart;
+          if (e.trigger !== 'syncExtremes') {
+            Highcharts.each(Highcharts.charts, function(chart) {
+              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
+                if (chart.xAxis[0].setExtremes) {
+                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
+                }
+              }
+            });
+          }
+          var minX = e.min, maxX = e.max,
+              yMin = Infinity, yMax = -Infinity,
+              chart = this.chart;
+          Highcharts.each(chart.series, function(s){
+            Highcharts.each(s.points, function(p){
+              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
+            });
+          });
+          chart.yAxis[0].setExtremes(yMin, yMax);
+        }
+      ")
+      )
+    )
+
+  hc
+}
+
+
+
+
+

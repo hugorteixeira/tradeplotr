@@ -20,6 +20,7 @@
 #' @importFrom tidyr pivot_longer
 #' @importFrom xts apply.monthly first last xts
 #' @importFrom zoo coredata index
+#' @importFrom lubridate interval
 ## usethis namespace: end
 NULL
 

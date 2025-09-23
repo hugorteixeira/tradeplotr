@@ -1,99 +1,83 @@
-# rTradingPlots
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R](https://img.shields.io/badge/R-%E2%89%A54.5-blue)](https://www.r-project.org/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+<!-- badges: end -->
 
-Simple plotting for trading/backtesting workflows in R. The package centers around a single function, `tplot()`, that tries to “just show the chart”, whatever is that you put into it, be a quantstrat/blotter portfolio backtest, an xts object, a string of a name of an object, a quantmod ticker, a rSenhorMercadoAPI ticker (to be released), so you can focus on your ideas instead of wiring up plots.
+<p align="center">
+  <img src="man/figures/logo.png" alt="rTradingPlots Logo" width="200">
+</p>
 
-This is a VERY early-stage software with a lot of rough edges. Use with care and common sense.
+<h1 align="center">rTradingPlots 📈</h1>
 
+<p align="center">
+  <strong>Generate beautiful, interactive performance reports for financial assets and trading strategies</strong>
+</p>
 
-## Why tplot()
+<p align="center">
+  <img src="man/figures/demo-chart.png" alt="Example Chart" width="600">
+</p>
 
-- Simple defaults: call `tplot()` with a portfolio name, ticker(s), or xts/data.frame series and you get a full performance view (cumulative, periodic returns, drawdowns, stats, optional OHLC - first ticker).
-- Quantstrat-friendly: if you pass a portfolio name, `tplot()` tries to pick up your blotter/quantstrat data (mktdata/trades/returns) automatically.
-- Multiple outputs: interactive viewer, standalone HTML, and static PNG/JPG (to be improved).
-- Themes: ship with light/dark and a few alternative styles, plus an easy way to create your own.
-- Future modularity: more flexible composition of sections/modules will be added.
-- Highcharter: adds a more interesting way to look at charts (not optimized yet, big datasets are slow)
+## 🌟 Why rTradingPlots?
 
-## Install
+Tired of spending hours wiring up plots for your trading strategies? `rTradingPlots` is here to help!
 
-```r
-# From GitHub (development)
-install.packages("remotes")
-remotes::install_github("hugorteixeira/rTradingPlots")
+The package centers around a single powerful function, `tplot()`, that **"just shows the chart"** - whatever you throw at it. Whether it's a quantstrat/blotter portfolio backtest, an xts object, a quantmod ticker, or a string with an object name, you get a comprehensive visualization instantly.
 
-# Recommended (for crisp images)
-install.packages("ragg")
-```
+### ✨ Key Features
 
-Requirements: R >= 4.5 recommended. For quantstrat/blotter integration, install those packages and set up your portfolio as usual.
+- **Simple defaults**: One function call and you get a full performance view
+- **Quantstrat-friendly**: Automatically picks up your blotter/quantstrat data
+- **Multiple outputs**: Interactive viewer, standalone HTML, and static PNG/JPG
+- **Custom themes**: Light/dark modes and easy theme creation
+- **Flexible composition**: Modular design for customizable charts
+- **Highcharter integration**: Interactive, engaging visualizations
 
+> ⚠️ **Note**: This is a VERY early-stage software with rough edges. Use with care and common sense.
 
-## Quick Start
+## 📊 Chart Types
 
-The one function you need is `tplot()`.
+### 📉 Drawdown Analysis
+Understand your strategy's risk profile with comprehensive drawdown visualization. See peak-to-trough declines over time to identify periods of loss and recovery.
 
-```r
-library(rTradingPlots)
+<p align="center">
+  <img src="man/figures/drawdowns.png" alt="Drawdown Analysis" width="600">
+</p>
 
-# 1) Quick view of a ticker with a benchmark (interactive viewer)
-tplot("AAPL", "SPY", init = "2018-01-01", format = "viewer")
+### 🔄 Rolling Returns
+Analyze performance consistency with rolling window returns. Identify periods of strong or weak performance across different time horizons.
 
-or even just
+<p align="center">
+  <img src="man/figures/rolling-returns.png" alt="Rolling Returns" width="600">
+</p>
 
-tplot("GOOG")
+### 📋 Returns Tables
+Get detailed performance statistics in an easy-to-read tabular format. Perfect for comparing performance across periods or assets.
 
-# 2) Standalone HTML report
-path_html <- tplot("AAPL", "SPY", init = "2018-01-01", format = "html", output_dir = "tplots")
-cat("Saved:", path_html, "\n")
+<p align="center">
+  <img src="man/figures/returns-table.png" alt="Returns Table" width="600">
+</p>
 
-# 3) Static image (PNG/JPG) — fast-ish plots via ggplot2
-path_png <- tplot("AAPL", "SPY", init = "2018-01-01", format = "png",  output_dir = "tplots")
-path_jpg <- tplot("AAPL", "SPY", init = "2018-01-01", format = "jpg",  output_dir = "tplots")
+### 📈 Correlation Matrix
+Visualize relationships between different assets or strategies to understand diversification benefits.
 
-# 4) With quantstrat/blotter portfolio name
-# If a portfolio named "myPort" exists, tplot will try to use its mktdata/trades/returns
-tplot("myPort", format = "viewer")
-```
+<p align="center">
+  <img src="man/figures/correlations.png" alt="Correlation Matrix" width="600">
+</p>
 
-You can also pass xts/data.frame objects directly (single- or multi-column). The first series is the main asset; others are benchmarks.
+## 🎨 Custom Themes
 
-```r
-# xts returns series
-xts_main <- your_xts_returns
-xts_bench <- your_benchmark_returns
-tplot(xts_main, xts_bench, init = "2019-01-01", finit = "2024-01-01", format = "viewer")
-```
+Personalize your charts with custom themes. Here's how different themes can transform the look and feel of your visualizations:
 
-Output options for `format`:
+<p align="center">
+  <img src="man/figures/theme-light.png" alt="Light Theme" width="250">
+  <img src="man/figures/theme-dark.png" alt="Dark Theme" width="250">
+  <img src="man/figures/theme-colorful.png" alt="Colorful Theme" width="250">
+</p>
 
-- `"viewer"`: opens an interactive view (RStudio viewer/browser)
-- `"html"`: saves a self-contained HTML (returns the file path)
-- `"png"`, `"jpg"`: saves a static image to `output_dir` (returns the file path)
-- `"json"`: returns core data as JSON (not a chart)
+### Creating Custom Themes
 
-`tplot()` tries to be robust with inputs and will fall back to simpler behaviors when some data are missing.
-
-
-## Examples
-
-```r
-# Basic: main ticker only
-tplot("AAPL", init = "2015-01-01", format = "viewer")
-
-# Main + multiple benchmarks
-tplot("AAPL", c("SPY", "QQQ"), init = "2018-01-01", finit = Sys.Date(), format = "html")
-
-# Static image with a different theme
-tplot("AAPL", "SPY", init = "2018-01-01", format = "png", theme = dark_theme(), output_dir = "tplots")
-
-# Using a blotter/quantstrat portfolio (if loaded in your session)
-tplot("myPort", init = "2021-01-01", finit = Sys.Date(), format = "viewer")
-```
-
-
-## Creating a Theme
-
-Themes are lightweight lists that control colors, fonts, margins, and some chart settings. Start by modifying an existing theme:
+Themes are lightweight lists that control colors, fonts, margins, and chart settings:
 
 ```r
 my_theme <- function(){
@@ -116,28 +100,76 @@ my_theme <- function(){
 tplot("AAPL", "SPY", format = "viewer", theme = my_theme())
 ```
 
-Or build one from scratch (must return a list with at least: `palette`, `font_family`, `font_sizes`, `colors`, `hc_margin`, `hc_spacing`, `candles`, `footer_text`). See `R/themes.R` for examples.
+## 🚀 Quick Start
 
+### 📦 Installation
 
-## Roadmap (short)
+```r
+# Install from GitHub (development version)
+install.packages("remotes")
+remotes::install_github("hugorteixeira/rTradingPlots")
 
-- More modular composition for charts and tables (plug-and-play modules)
-- Performance and layout polish
-- API cleanup and more consistent naming
-- Documentation and examples
+# Recommended for crisp images
+install.packages("ragg")
+```
 
+**Requirements**: R >= 4.5 recommended. For quantstrat/blotter integration, install those packages and set up your portfolio as usual.
 
-## Status and Caveats
+### 🏃 Usage
 
-This is very much a work in progress. There are a lot of bugs and edge cases. Expect breaking changes. Please file issues with minimal reproducible examples.
+The one function you need is `tplot()`:
 
+```r
+library(rTradingPlots)
 
-## About the Author
+# 1) Quick view of a ticker with a benchmark (interactive viewer)
+tplot("AAPL", "SPY", init = "2018-01-01", format = "viewer")
 
-Hi, I’m Hugo. I build tools around trading and backtesting in R to streamline workflow and help iterate on strategies faster. If you find rTradingPlots useful (or frustrating!), feedback is welcome.
+# Or even simpler
+tplot("GOOG")
 
+# 2) Standalone HTML report
+path_html <- tplot("AAPL", "SPY", init = "2018-01-01", format = "html", output_dir = "tplots")
+cat("Saved:", path_html, "\n")
 
-## License
+# 3) Static image (PNG/JPG) - fast plots via ggplot2
+path_png <- tplot("AAPL", "SPY", init = "2018-01-01", format = "png",  output_dir = "tplots")
+path_jpg <- tplot("AAPL", "SPY", init = "2018-01-01", format = "jpg",  output_dir = "tplots")
 
-GPL-3. See `LICENSE.md`.
+# 4) With quantstrat/blotter portfolio name
+# If a portfolio named "myPort" exists, tplot will try to use its mktdata/trades/returns
+tplot("myPort", format = "viewer")
+```
 
+### 📊 Output Formats
+
+| Format    | Description                              | Output                         |
+|-----------|------------------------------------------|--------------------------------|
+| `viewer`  | Interactive view in RStudio/browser      | Opens in viewer                |
+| `html`    | Self-contained HTML file                 | Returns file path              |
+| `png`     | Static PNG image                         | Saves to `output_dir`          |
+| `jpg`     | Static JPG image                         | Saves to `output_dir`          |
+| `json`    | Core data as JSON                        | Returns JSON data              |
+
+## 🛠️ Roadmap
+
+- [ ] More modular composition for charts and tables (plug-and-play modules)
+- [ ] Performance and layout polish
+- [ ] API cleanup and more consistent naming
+- [ ] Comprehensive documentation and examples
+
+## 👨‍💻 About the Author
+
+Hi, I'm **Hugo Rzepian Teixeira**! I build tools around trading and backtesting in R to streamline workflow and help iterate on strategies faster. 
+
+If you find `rTradingPlots` useful (or frustrating!), feedback is always welcome.
+
+## 📄 License
+
+[GPL-3](LICENSE.md) © Hugo Rzepian Teixeira
+
+---
+
+<p align="center">
+  <strong>Made with ❤️ for the R trading community</strong>
+</p>

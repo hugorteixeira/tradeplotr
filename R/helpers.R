@@ -453,8 +453,8 @@
 #' @return Logical.
 #' @keywords internal
 isDI <- function(mkt){
-  print("Checking for DI data.")
   if (is.null(mkt)) return(FALSE)
+  cat("\nDI futures data detected.")
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
 }

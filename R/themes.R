@@ -20,14 +20,33 @@ default_theme <- function(){
       up_color   = "#1a9f4b",
       down_color = "#cc3d3d",
       line_color = "#555555",
-      line_width = 1,
-      point_width= 4,
+      line_width = 0.5,
+      point_width= 3,
+      height = 300,
       grouping   = FALSE
+    ),
+    volume = list(
+      height = 70
+    ),
+    position = list(
+      height = 150
+    ),
+    cumret = list(
+      height = 200
+    ),
+    rollingret = list(
+      height = 100
+    ),
+    periodret = list(
+      height = 100
+    ),
+    drawdown = list(
+      height = 100
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
     ft_font_family = "Montserrat",
-    footer_text = "rTradingPlots package by Hugo Rzepian Teixeira | Licensed under GPL-3 | www.senhormercado.com.br"
+    footer_text = "rTradingPlots | Licensed under GPL-3 | github.com/hugorteixeira"
     )
 }
 
@@ -53,14 +72,33 @@ dark_theme <- function(){
       up_color   = "#00d175",
       down_color = "#ff4d4d",
       line_color = "#bbbbbb",
-      line_width = 1,
-      point_width= 5,
+      line_width = 0.5,
+      point_width= 3,
+      height = 400,
       grouping   = FALSE
+    ),
+    volume = list(
+      height = 130
+    ),
+    position = list(
+      height = 130
+    ),
+    cumret = list(
+      height = 130
+    ),
+    rollingret = list(
+      height = 130
+    ),
+    periodret = list(
+      height = 130
+    ),
+    drawdown = list(
+      height = 130
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
     ft_font_family = "Montserrat",
-    footer_text = "rTradingPlots package by Hugo Rzepian Teixeira | Licensed under GPL-3 | www.senhormercado.com.br"
+    footer_text = "rTradingPlots | Licensed under GPL-3 | github.com/hugorteixeira"
   )
 }
 
@@ -84,14 +122,33 @@ fancy_theme <- function(){
       up_color   = "#20BF55",
       down_color = "#F54748",
       line_color = "#7A7A7A",
-      line_width = 1,
-      point_width= 5,
-      grouping   = TRUE
+      line_width = 0.5,
+      point_width= 3,
+      height = 400,
+      grouping   = FALSE
+    ),
+    volume = list(
+      height = 130
+    ),
+    position = list(
+      height = 130
+    ),
+    cumret = list(
+      height = 130
+    ),
+    rollingret = list(
+      height = 130
+    ),
+    periodret = list(
+      height = 130
+    ),
+    drawdown = list(
+      height = 130
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
     ft_font_family = "Poppins",
-    footer_text = "rTradingPlots - fancy style"
+    footer_text = "rTradingPlots | Licensed under GPL-3 | github.com/hugorteixeira"
   )
 }
 
@@ -115,14 +172,33 @@ pro_theme <- function(){
       up_color   = "#27AE60",
       down_color = "#EB5757",
       line_color = "#B0B7C3",
-      line_width = 1,
-      point_width= 4,
-      grouping   = TRUE
+      line_width = 0.5,
+      point_width= 3,
+      height = 400,
+      grouping   = FALSE
+    ),
+    volume = list(
+      height = 130
+    ),
+    position = list(
+      height = 130
+    ),
+    cumret = list(
+      height = 130
+    ),
+    rollingret = list(
+      height = 130
+    ),
+    periodret = list(
+      height = 130
+    ),
+    drawdown = list(
+      height = 130
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
     ft_font_family = "Inter",
-    footer_text = "rTradingPlots - professional"
+    footer_text = "rTradingPlots | Licensed under GPL-3 | github.com/hugorteixeira"
   )
 }
 
@@ -146,13 +222,32 @@ hacker_theme <- function(){
       up_color   = "#33FF99",
       down_color = "#FF6666",
       line_color = "#4A5C5E",
-      line_width = 1,
-      point_width= 5,
+      line_width = 0.5,
+      point_width= 3,
+      height = 400,
       grouping   = FALSE
+    ),
+    volume = list(
+      height = 130
+    ),
+    position = list(
+      height = 130
+    ),
+    cumret = list(
+      height = 130
+    ),
+    rollingret = list(
+      height = 130
+    ),
+    periodret = list(
+      height = 130
+    ),
+    drawdown = list(
+      height = 130
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
     ft_font_family = "Fira Code",
-    footer_text = "rTradingPlots - hacker mode"
+    footer_text = "rTradingPlots | Licensed under GPL-3 | github.com/hugorteixeira"
   )
 }
