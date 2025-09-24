@@ -1,6 +1,5 @@
 ## Data detection and sourcing helpers
 
-
 #' Get a function by name if it exists in the environment
 #' @param name The name of the function to look for.
 #' @return The function object, or NULL if not found.
@@ -452,13 +451,13 @@
 #' @param mkt The xts object with market data.
 #' @return Logical.
 #' @keywords internal
-isDI <- function(mkt){
+.isDI <- function(mkt){
   if (is.null(mkt)) return(FALSE)
-  cat("\nDI futures data detected.")
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
 }
-calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = NULL) {
+.calculate_futures_di_rates <- function(pu, maturity_date, basis_date = Sys.Date(), cal = NULL) {
+  # 0) standard calendar
 
   if (is.null(cal)) {
     cal <- create.calendar(
@@ -468,15 +467,17 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = N
     )
   }
 
-
-  if (inherits(vencimento, "Date")) {
-    n  <- bizdays(data_base, vencimento, cal)
-    mm <- lubridate::interval(data_base, vencimento) %/% months(1)
-  } else if (is.numeric(vencimento)) {
-    n  <- as.integer(vencimento)
+  # 1) valid days
+  if (inherits(maturity_date, "Date")) {
+    n  <- bizdays(basis_date, maturity_date, cal)
+    mm <- lubridate::interval(basis_date, maturity_date) %/% months(1)
+  } else if (is.numeric(maturity_date)) {
+    n  <- as.integer(maturity_date)
     mm <- n / 21
   } else {
-    stop("'vencimento' deve ser numero de dias uteis (numeric) ou objeto Date.")
+    maturity_date <- as.Date(maturity_date)
+    n  <- bizdays(basis_date, maturity_date, cal)
+    mm <- lubridate::interval(basis_date, maturity_date) %/% months(1)
   }
 
   # 2) tick-size
@@ -484,15 +485,54 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = N
   else if (mm <= 60) 0.005
   else               0.010
 
-  taxa <- 100 * ( (1e5 / pu)^(252 / n) - 1 )
-  deriv       <- (n/252) * 1e5/100 * (1 + taxa/100)^(-(n/252) - 1)
+  pu <- as.numeric(pu)
+
+  rates <- 100 * ( (1e5 / pu)^(252 / n) - 1 )
+
+  deriv       <- (n/252) * 1e5/100 * (1 + rates/100)^(-(n/252) - 1)
   tick_value  <- deriv * tick_size
 
+  # 5) return
   return(list(
-    dias_uteis  = n,
-    taxa        = round(as.numeric(taxa),3),
+    valid_days  = n,
+    rates        = round(as.numeric(rates),3),
     tick_size   = tick_size,
     tick_value  = round(as.numeric(tick_value),3)
+  ))
+}
+.calculate_futures_di_notional <- function(rates, maturity_date, basis_date = Sys.Date(), cal = NULL) {
+  if (is.null(cal)) {
+    cal <- create.calendar(
+      name      = "Brazil/ANBIMA",
+      holidays  = holidays("Brazil/ANBIMA"),
+      weekdays  = c("saturday", "sunday")
+    )
+  }
+  # 1) n of valid days
+  if (inherits(maturity_date, "Date")) {
+    n  <- bizdays(basis_date, maturity_date, cal)
+    mm <- interval(basis_date, maturity_date) %/% months(1)
+  } else if (is.numeric(maturity_date)) {
+    n  <- as.integer(maturity_date)
+    mm <- n / 21
+  } else {
+    stop("'maturity_date' has to be a number of days or Date.")
+  }
+  # 2) calculate di rates
+  tick_size <- if      (mm <=  3) 0.001
+  else if (mm <= 60) 0.005
+  else               0.010
+  # 3) PU
+  pu <- 1e5 / (1 + rates/100)^(n/252)
+  # 4) tick-value
+  deriv <- (n/252) * 1e5/100 * (1 + rates/100)^(-(n/252) - 1)
+  tick_value <- deriv * tick_size
+  # 5) return
+  return(list(
+    valid_days  = n,
+    pu          = as.numeric(pu),
+    tick_size   = tick_size,
+    tick_value  = as.numeric(tick_value)
   ))
 }
 
@@ -504,13 +544,10 @@ calcular_taxa_futuro <- function(pu, vencimento, data_base = Sys.Date(), cal = N
 #' @importFrom bizdays bizdays create.calendar holidays
 #' @keywords internal
 get_DI_price <- function(price, row_date, maturity){
-  fn <- .get_function_if_exists("calcular_taxa_futuro")
-  if (!is.null(fn)) {
-    res <- tryCatch(fn(price, maturity, row_date), error = function(e) NULL)
-    if (!is.null(res) && !is.null(res$taxa)) return(as.numeric(res$taxa))
-  }
-  # fallback: if helper not available, assume 'price' already is a numeric rate
-  as.numeric(price)
+  res <- tryCatch(.calculate_futures_di_rates(pu = price, maturity, row_date), error = function(e) NULL)
+  if (!is.null(res) && !is.null(res$rates)) return(as.numeric(res$rates))
+# fallback: if helper not available, assume 'price' already is a numeric rate
+  #as.numeric(price)
 }
 
 #' Converts the statistics data.frame to a JSON-ready list
