@@ -456,6 +456,7 @@
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
 }
+
 .calculate_futures_di_rates <- function(pu, maturity_date, basis_date = Sys.Date(), cal = NULL) {
   # 0) standard calendar
 
@@ -535,7 +536,130 @@
     tick_value  = as.numeric(tick_value)
   ))
 }
+# Helper: tick-size by regime (pre- vs post-change)
+.get_di_tick_size <- function(mm, basis_date, rule_change_date = as.Date("2025-08-01")) {
+  basis_date <- as.Date(basis_date)
+  if (basis_date < rule_change_date) {
+    # Old rule (pre-change): 0–3m: 0.001; 3–60m: 0.005; >60m: 0.010
+    if (mm <= 3) 0.001 else if (mm <= 60) 0.005 else 0.010
+  } else {
+    # New rule (post-change): 0–3m: 0.001; >3m: 0.005 (no 0.010 tier)
+    if (mm <= 3) 0.001 else 0.005
+  }
+}
 
+.calculate_futures_di_rates <- function(
+    pu,
+    maturity_date,
+    basis_date = Sys.Date(),
+    cal = NULL,
+    rule_change_date = as.Date("2025-08-01")
+) {
+  # 0) Calendar
+  if (is.null(cal)) {
+    cal <- bizdays::create.calendar(
+      name      = "Brazil/ANBIMA",
+      holidays  = bizdays::holidays("Brazil/ANBIMA"),
+      weekdays  = c("saturday", "sunday")
+    )
+  }
+  basis_date <- as.Date(basis_date)
+
+  # 1) Business days (n) and months to maturity (mm)
+  if (inherits(maturity_date, "Date")) {
+    md <- maturity_date
+    n  <- bizdays::bizdays(basis_date, md, cal)
+    mm <- lubridate::interval(basis_date, md) %/% lubridate::months(1)
+  } else if (is.numeric(maturity_date)) {
+    md <- NULL
+    n  <- as.integer(maturity_date)
+    mm <- n / 21
+  } else {
+    md <- try(as.Date(maturity_date), silent = TRUE)
+    if (inherits(md, "try-error") || is.na(md)) {
+      stop("'maturity_date' must be Date, a number of business days, or coercible to Date.")
+    }
+    n  <- bizdays::bizdays(basis_date, md, cal)
+    mm <- lubridate::interval(basis_date, md) %/% months(1)
+  }
+
+  if (n <= 0) stop("Number of business days to maturity (n) must be positive.")
+
+  # 2) Tick-size (depends on regime at basis_date)
+  tick_size <- .get_di_tick_size(mm, basis_date, rule_change_date)
+
+  # 3) Rate from PU
+  pu <- as.numeric(pu)
+  if (any(!is.finite(pu) | pu <= 0)) stop("'pu' must be positive and finite.")
+
+  rates <- 100 * ((1e5 / pu)^(252 / n) - 1)  # percent
+
+  # 4) Tick-value (magnitude), using dPU/d(rate in percentage points)
+  # dPU/d(r%) = -(n/252) * PU / (100 * (1 + r%/100))
+  deriv_pp   <- -(n/252) * pu / (100 * (1 + rates/100))
+  tick_value <- abs(deriv_pp) * tick_size
+
+  # 5) Return (no rounding for precision)
+  list(
+    valid_days = n,
+    rates      = as.numeric(rates),     # percent
+    tick_size  = tick_size,             # percent points per tick
+    tick_value = as.numeric(tick_value) # PU points per tick
+  )
+}
+
+.calculate_futures_di_notional <- function(
+    rates,
+    maturity_date,
+    basis_date = Sys.Date(),
+    cal = NULL,
+    rule_change_date = as.Date("2025-08-01")
+) {
+  # 0) Calendar
+  if (is.null(cal)) {
+    cal <- bizdays::create.calendar(
+      name      = "Brazil/ANBIMA",
+      holidays  = bizdays::holidays("Brazil/ANBIMA"),
+      weekdays  = c("saturday", "sunday")
+    )
+  }
+  basis_date <- as.Date(basis_date)
+
+  # 1) Business days (n) and months to maturity (mm)
+  if (inherits(maturity_date, "Date")) {
+    md <- maturity_date
+    n  <- bizdays::bizdays(basis_date, md, cal)
+    mm <- lubridate::interval(basis_date, md) %/% months(1)
+  } else if (is.numeric(maturity_date)) {
+    md <- NULL
+    n  <- as.integer(maturity_date)
+    mm <- n / 21
+  } else {
+    stop("'maturity_date' must be a number of business days or Date.")
+  }
+
+  if (n <= 0) stop("Number of business days to maturity (n) must be positive.")
+
+  # 2) Tick-size (depends on regime at basis_date)
+  tick_size <- .get_di_tick_size(mm, basis_date, rule_change_date)
+
+  # 3) PU from rate
+  rates <- as.numeric(rates)
+  if (any(!is.finite(rates) | rates <= -100)) stop("'rates' must be finite and > -100%.")
+  pu <- 1e5 / (1 + rates/100)^(n/252)
+
+  # 4) Tick-value (magnitude)
+  deriv_pp   <- -(n/252) * pu / (100 * (1 + rates/100))
+  tick_value <- abs(deriv_pp) * tick_size
+
+  # 5) Return (no rounding for precision)
+  list(
+    valid_days = n,
+    pu         = as.numeric(pu),        # PU
+    tick_size  = tick_size,             # percent points per tick
+    tick_value = as.numeric(tick_value) # PU points per tick
+  )
+}
 #' Calculates the rate from the PU of a brazilian DI futures contract
 #' @param price The PU (unit price) of the contract.
 #' @param row_date The date of the calculation.
@@ -715,6 +839,7 @@ fix_pkg <- function(x) {
 
     cols <- colnames(item)
     idx_close    <- find_col_idx(cols, "Close")
+    idx_pu_close    <- find_col_idx(cols, "PU_c")
     idx_adjusted <- find_col_idx(cols, "Adjusted")
     idx_discrete <- find_col_idx(cols, "Discrete")
 
@@ -726,6 +851,8 @@ fix_pkg <- function(x) {
       chosen_idx <- idx_close;    chosen_msg <- "\n        Close (calculated)\n"
     } else if (grepl("IPCA", item_name, ignore.case = TRUE) && !is.na(idx_close)) {
       chosen_idx <- idx_close;    chosen_msg <- "\n        Close (calculated)\n"
+    } else if (grepl("DI1", item_name, ignore.case = TRUE) && !is.na(idx_pu_close)) {
+      chosen_idx <- idx_pu_close;    chosen_msg <- "\n        Close DI (calculated)\n"
     } else if (!is.na(idx_adjusted)) {
       chosen_idx <- idx_adjusted; chosen_msg <- "\n        Adjusted\n"
     } else if (!is.na(idx_close)) {
@@ -792,27 +919,83 @@ fix_pkg <- function(x) {
     }
   }
 
+  # ativos_data_returns <- ativos_data
+  # for (i in seq_len(NCOL(ativos_data))) {
+  #   if (!use_discrete[i]) {
+  #     r_i <- PerformanceAnalytics::Return.calculate(ativos_data[, i], method = "discrete")
+  #     # Set the very first non-NA return for this column to 0 (do NOT touch global first row)
+  #     if (NROW(r_i) > 0) {
+  #       fi <- which(!is.na(r_i[, 1]))
+  #       if (length(fi)) r_i[fi[1], 1] <- 0
+  #     }
+  #     ativos_data_returns[, i] <- r_i
+  #     vmsg(sprintf("[.data_prepare] Return.calculate(%s) -> rows=%d",
+  #                  col_names[i], NROW(r_i)))
+  #   } else {
+  #     # For already discrete returns columns, ensure first valid is 0
+  #     r_i <- ativos_data[, i, drop = FALSE]
+  #     fi <- which(!is.na(r_i[, 1]))
+  #     if (length(fi)) r_i[fi[1], 1] <- 0
+  #     ativos_data_returns[, i] <- r_i
+  #   }
+  # }
+
+  # Assumptions:
+  # - 'ativos_data' is an xts, zoo, or data.frame with numeric columns
+  # - 'use_discrete' is a logical vector of length NCOL(ativos_data)
+  # - 'col_names' matches colnames(ativos_data); if missing, it will be set
+
   ativos_data_returns <- ativos_data
+  if (!exists("col_names")) col_names <- colnames(ativos_data)
+
   for (i in seq_len(NCOL(ativos_data))) {
+    # Extract the single-column series (preserve xts/data.frame structure)
+    x_col  <- ativos_data[, i, drop = FALSE]
+    # Flatten values to numeric vector for validation checks (ignoring index)
+    x_vals <- as.numeric(x_col)
+    # Finite mask to ignore NA/NaN/Inf in the checks
+    fin    <- is.finite(x_vals)
+
+    # Content checks (ignore NAs/Inf):
+    # - have at least one finite value
+    have_data      <- any(fin)
+    # - all finite values are strictly positive (> 0) to avoid 1/0 issues
+    positive_ok    <- have_data && all(x_vals[fin] > 0)
+    # - at least 5 digits before the decimal point for all finite values
+    #   (e.g., 67890.00 => trunc(67890.00) = 67890 >= 10000)
+    five_digits_ok <- have_data && all(trunc(x_vals[fin]) >= 10000)
+
     if (!use_discrete[i]) {
-      r_i <- PerformanceAnalytics::Return.calculate(ativos_data[, i], method = "discrete")
-      # Set the very first non-NA return for this column to 0 (do NOT touch global first row)
+      # Only consider inversion when the column is NOT already a discrete return
+      prefix_ok <- startsWith(col_names[i], "DI1")
+      invert_for_DI1 <- prefix_ok && positive_ok && five_digits_ok
+
+      # Use 1/x for DI1 columns meeting the criteria; otherwise use x as-is
+      r_input <- if (invert_for_DI1) 1 / x_col else x_col
+
+      # Compute discrete returns
+      r_i <- PerformanceAnalytics::Return.calculate(r_input, method = "discrete")
+
+      # Set the first non-NA return in this column to 0 (do not touch other columns)
       if (NROW(r_i) > 0) {
         fi <- which(!is.na(r_i[, 1]))
         if (length(fi)) r_i[fi[1], 1] <- 0
       }
       ativos_data_returns[, i] <- r_i
-      vmsg(sprintf("[.data_prepare] Return.calculate(%s) -> rows=%d",
-                   col_names[i], NROW(r_i)))
+
+      # Optional log
+      vmsg(sprintf("[.data_prepare] Return.calculate(%s%s) -> rows=%d",
+                   col_names[i],
+                   if (invert_for_DI1) " [1/x]" else "",
+                   NROW(r_i)))
     } else {
-      # For already discrete returns columns, ensure first valid is 0
-      r_i <- ativos_data[, i, drop = FALSE]
+      # Column already represents discrete returns: only set first valid to 0
+      r_i <- x_col
       fi <- which(!is.na(r_i[, 1]))
       if (length(fi)) r_i[fi[1], 1] <- 0
       ativos_data_returns[, i] <- r_i
     }
   }
-
   # ---- Align returns to a common, safe periodicity ----
   # Map periodicity to an ordered rank and endpoint label
   .per_key <- function(scale) {
