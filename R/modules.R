@@ -518,6 +518,70 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   hc
 }
 
+# Internal JS helpers for dynamic axis rescaling
+.js_pad <- function(n) paste(rep(" ", max(0, as.integer(n))), collapse = "")
+
+.js_rescale_body <- function(min_expr = "chart.xAxis[0].min", max_expr = "chart.xAxis[0].max", ensure_zero = FALSE, indent = 6) {
+  pad <- .js_pad(indent)
+  zero <- if (ensure_zero) paste0(pad, "if (isFinite(yMax)) { yMax = Math.max(yMax, 0); }\n") else ""
+  paste0(
+    pad, "var axis = chart.yAxis && chart.yAxis[0];\n",
+    pad, "if (!axis) { return; }\n",
+    pad, "var minX = ", min_expr, ",\n",
+    pad, "    maxX = ", max_expr, ",\n",
+    pad, "    yMin = Infinity,\n",
+    pad, "    yMax = -Infinity,\n",
+    pad, "    hasPoints = false;\n",
+    pad, "Highcharts.each(chart.series, function(series) {\n",
+    pad, "  if (!series.visible) { return; }\n",
+    pad, "  Highcharts.each(series.points, function(point) {\n",
+    pad, "    if (point.x >= minX && point.x <= maxX) {\n",
+    pad, "      yMin = Math.min(yMin, point.y);\n",
+    pad, "      yMax = Math.max(yMax, point.y);\n",
+    pad, "      hasPoints = true;\n",
+    pad, "    }\n",
+    pad, "  });\n",
+    pad, "});\n",
+    pad, "if (!hasPoints) {\n",
+    pad, "  var ext = axis.getExtremes();\n",
+    pad, "  yMin = isFinite(ext.dataMin) ? ext.dataMin : 0;\n",
+    pad, "  yMax = isFinite(ext.dataMax) ? ext.dataMax : 0;\n",
+    pad, "}\n",
+    zero,
+    pad, "if (!isFinite(yMin) || !isFinite(yMax)) { return; }\n",
+    pad, "if (yMin === yMax) {\n",
+    pad, "  var padY = Math.abs(yMin) * 0.05 || 1;\n",
+    pad, "  yMin -= padY;\n",
+    pad, "  yMax += padY;\n",
+    pad, "}\n",
+    pad, "axis.setExtremes(yMin, yMax, undefined, false, {trigger: 'syncExtremes'});\n"
+  )
+}
+
+.js_visibility_events <- function(ensure_zero = FALSE) {
+  body <- .js_rescale_body(indent = 4, ensure_zero = ensure_zero)
+  list(
+    show = JS(paste0(
+      "function(){\n",
+      "  var chart = this.chart;\n",
+      "  if (!chart) { return; }\n",
+      "  setTimeout(function(){\n",
+      body,
+      "  }, 0);\n",
+      "}\n"
+    )),
+    hide = JS(paste0(
+      "function(){\n",
+      "  var chart = this.chart;\n",
+      "  if (!chart) { return; }\n",
+      "  setTimeout(function(){\n",
+      body,
+      "  }, 0);\n",
+      "}\n"
+    ))
+  )
+}
+
 #' Renders the Cumulative Returns Chart Module
 #' @param ret_cum An xts object with cumulative returns.
 #' @param datas A numeric vector of dates in milliseconds.
@@ -613,23 +677,21 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
       type  = "line", name = benchs[i], color = pal[i+1], id = benchs[i]
     )
   }
+  series_events <- .js_visibility_events()
   if(link_charts){
-    hc <- hc %>% hc_plotOptions(
-      series = list(events = list(
-        legendItemClick = JS(
-          "function(){
-             var id=this.options.id;
-             Highcharts.charts.forEach(function(c){
-               if(!c) return;
-               var s = c.get(id);
-               if(s){ s.visible? s.hide(): s.show(); }
-             });
-             return false;
-           }"
-        )
-      ))
+    series_events$legendItemClick <- JS(
+      "function(){
+         var id=this.options.id;
+         Highcharts.charts.forEach(function(c){
+           if(!c) return;
+           var s = c.get(id);
+           if(s){ s.visible? s.hide(): s.show(); }
+         });
+         return false;
+       }"
     )
   }
+  hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
   message(sprintf("Module 'cumret' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
@@ -637,29 +699,22 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
     hc_xAxis(
       type="datetime",
       events = list(
-        afterSetExtremes = JS("
-        function(e){
-          var thisChart = this.chart;
-          if (e.trigger !== 'syncExtremes') {
-            Highcharts.each(Highcharts.charts, function(chart) {
-              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
-                if (chart.xAxis[0].setExtremes) {
-                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
-                }
-              }
-            });
-          }
-          var minX = e.min, maxX = e.max,
-              yMin = Infinity, yMax = -Infinity,
-              chart = this.chart;
-          Highcharts.each(chart.series, function(s){
-            Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
-            });
-          });
-          chart.yAxis[0].setExtremes(yMin, yMax);
-        }
-      ")
+        afterSetExtremes = JS(paste0(
+          "function(e){\n",
+          "  var thisChart = this.chart;\n",
+          "  if (e.trigger !== 'syncExtremes') {\n",
+          "    Highcharts.each(Highcharts.charts, function(chart) {\n",
+          "      if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {\n",
+          "        if (chart.xAxis[0].setExtremes) {\n",
+          "          chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});\n",
+          "        }\n",
+          "      }\n",
+          "    });\n",
+          "  }\n",
+          "  var chart = this.chart;\n",
+          .js_rescale_body(min_expr = "e.min", max_expr = "e.max", indent = 2),
+          "}\n"
+        ))
       )
     )
   hc
@@ -769,6 +824,8 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       type  = "line", name = nm,     color = pal[i+1], id = nm
     )
   }
+  series_events <- .js_visibility_events()
+  hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   # 6) mensagem de tempo e retorno
   termina <- Sys.time()
   message(sprintf(
@@ -779,29 +836,22 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
     hc_xAxis(
       type="datetime",
       events = list(
-        afterSetExtremes = JS("
-        function(e){
-          var thisChart = this.chart;
-          if (e.trigger !== 'syncExtremes') {
-            Highcharts.each(Highcharts.charts, function(chart) {
-              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
-                if (chart.xAxis[0].setExtremes) {
-                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
-                }
-              }
-            });
-          }
-          var minX = e.min, maxX = e.max,
-              yMin = Infinity, yMax = -Infinity,
-              chart = this.chart;
-          Highcharts.each(chart.series, function(s){
-            Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
-            });
-          });
-          chart.yAxis[0].setExtremes(yMin, yMax);
-        }
-      ")
+        afterSetExtremes = JS(paste0(
+          "function(e){\n",
+          "  var thisChart = this.chart;\n",
+          "  if (e.trigger !== 'syncExtremes') {\n",
+          "    Highcharts.each(Highcharts.charts, function(chart) {\n",
+          "      if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {\n",
+          "        if (chart.xAxis[0].setExtremes) {\n",
+          "          chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});\n",
+          "        }\n",
+          "      }\n",
+          "    });\n",
+          "  }\n",
+          "  var chart = this.chart;\n",
+          .js_rescale_body(min_expr = "e.min", max_expr = "e.max", indent = 2),
+          "}\n"
+        ))
       )
     )
   hc
@@ -880,6 +930,8 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
       type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
     )
   }
+  series_events <- .js_visibility_events()
+  hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
   message(sprintf("Module 'periodret' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
@@ -887,29 +939,22 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
     hc_xAxis(
       type="datetime",
       events = list(
-        afterSetExtremes = JS("
-        function(e){
-          var thisChart = this.chart;
-          if (e.trigger !== 'syncExtremes') {
-            Highcharts.each(Highcharts.charts, function(chart) {
-              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
-                if (chart.xAxis[0].setExtremes) {
-                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
-                }
-              }
-            });
-          }
-          var minX = e.min, maxX = e.max,
-              yMin = Infinity, yMax = -Infinity,
-              chart = this.chart;
-          Highcharts.each(chart.series, function(s){
-            Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
-            });
-          });
-          chart.yAxis[0].setExtremes(yMin, yMax);
-        }
-      ")
+        afterSetExtremes = JS(paste0(
+          "function(e){\n",
+          "  var thisChart = this.chart;\n",
+          "  if (e.trigger !== 'syncExtremes') {\n",
+          "    Highcharts.each(Highcharts.charts, function(chart) {\n",
+          "      if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {\n",
+          "        if (chart.xAxis[0].setExtremes) {\n",
+          "          chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});\n",
+          "        }\n",
+          "      }\n",
+          "    });\n",
+          "  }\n",
+          "  var chart = this.chart;\n",
+          .js_rescale_body(min_expr = "e.min", max_expr = "e.max", indent = 2),
+          "}\n"
+        ))
       )
     )
   hc
@@ -986,6 +1031,8 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
       type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
     )
   }
+  series_events <- .js_visibility_events(ensure_zero = TRUE)
+  hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
   message(sprintf("Module 'drawdown' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
@@ -993,29 +1040,22 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     hc_xAxis(
       type="datetime",
       events = list(
-        afterSetExtremes = JS("
-        function(e){
-          var thisChart = this.chart;
-          if (e.trigger !== 'syncExtremes') {
-            Highcharts.each(Highcharts.charts, function(chart) {
-              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
-                if (chart.xAxis[0].setExtremes) {
-                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
-                }
-              }
-            });
-          }
-          var minX = e.min, maxX = e.max,
-              yMin = Infinity, yMax = -Infinity,
-              chart = this.chart;
-          Highcharts.each(chart.series, function(s){
-            Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
-            });
-          });
-          chart.yAxis[0].setExtremes(yMin, yMax);
-        }
-      ")
+        afterSetExtremes = JS(paste0(
+          "function(e){\n",
+          "  var thisChart = this.chart;\n",
+          "  if (e.trigger !== 'syncExtremes') {\n",
+          "    Highcharts.each(Highcharts.charts, function(chart) {\n",
+          "      if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {\n",
+          "        if (chart.xAxis[0].setExtremes) {\n",
+          "          chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});\n",
+          "        }\n",
+          "      }\n",
+          "    });\n",
+          "  }\n",
+          "  var chart = this.chart;\n",
+          .js_rescale_body(min_expr = "e.min", max_expr = "e.max", ensure_zero = TRUE, indent = 2),
+          "}\n"
+        ))
       )
     )
   hc
@@ -1116,6 +1156,9 @@ drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_wit
     )
   }
 
+  series_events <- .js_visibility_events(ensure_zero = TRUE)
+  hc <- hc %>% hc_plotOptions(series = list(events = series_events))
+
   termina <- Sys.time()
   message(sprintf("Module 'drawdown' rendered in %.2f seconds.",
                   as.numeric(difftime(termina, comeca, units = "secs"))))
@@ -1125,36 +1168,24 @@ drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_wit
       type="datetime",
       events = list(
         # Keep X-axis synchronized and dynamically set Y-axis extremes to visible range
-        afterSetExtremes = JS("
-        function(e){
-          var thisChart = this.chart;
-          if (e.trigger !== 'syncExtremes') {
-            Highcharts.each(Highcharts.charts, function(chart) {
-              if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {
-                if (chart.xAxis[0].setExtremes) {
-                  chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});
-                }
-              }
-            });
-          }
-          var minX = e.min, maxX = e.max,
-              yMin = Infinity, yMax = -Infinity,
-              chart = this.chart;
-          Highcharts.each(chart.series, function(s){
-            Highcharts.each(s.points, function(p){
-              if(p.x >= minX && p.x <= maxX){ yMin = Math.min(yMin, p.y); yMax = Math.max(yMax, p.y); }
-            });
-          });
-          chart.yAxis[0].setExtremes(yMin, yMax);
-        }
-      ")
+        afterSetExtremes = JS(paste0(
+          "function(e){\n",
+          "  var thisChart = this.chart;\n",
+          "  if (e.trigger !== 'syncExtremes') {\n",
+          "    Highcharts.each(Highcharts.charts, function(chart) {\n",
+          "      if (chart && chart !== thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('candles') || chart.options.chart.renderTo.includes('cumret') || chart.options.chart.renderTo.includes('rolling') || chart.options.chart.renderTo.includes('period') || chart.options.chart.renderTo.includes('drawdown') || chart.options.chart.renderTo.includes('volume') || chart.options.chart.renderTo.includes('position'))) {\n",
+          "        if (chart.xAxis[0].setExtremes) {\n",
+          "          chart.xAxis[0].setExtremes(e.min, e.max, undefined, false, {trigger: 'syncExtremes'});\n",
+          "        }\n",
+          "      }\n",
+          "    });\n",
+          "  }\n",
+          "  var chart = this.chart;\n",
+          .js_rescale_body(min_expr = "e.min", max_expr = "e.max", ensure_zero = TRUE, indent = 2),
+          "}\n"
+        ))
       )
     )
 
   hc
 }
-
-
-
-
-
