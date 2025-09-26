@@ -16,7 +16,7 @@ NULL
 #' @param finit End date for the analysis in "YYYY-MM-DD" format.
 #' @param rf_rate The risk-free rate for calculating metrics like the Sharpe Ratio.
 #' @param geometric Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.
-#' @param normalize_risk Target annualized volatility (in %) used to scale all series before plotting. Use `NULL` to skip.
+#' @param normalize_risk Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.
 #' @param format The output format: "viewer", "html", "json", "png", or "jpg".
 #' @param output_dir The directory where output files (HTML, PNG, etc.) will be saved.
 #' @param modules A character vector of modules to include in the report.
@@ -252,7 +252,7 @@ tplot <- function(...,
 #' @param finit End date for the analysis.
 #' @param rf_rate The risk-free rate.
 #' @param geometric Logical, for geometric returns.
-#' @param normalize_risk Target annualized volatility (%) used to scale all series before plotting. Use `NULL` to skip.
+#' @param normalize_risk Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.
 #' @param modules Modules to display in the app.
 #' @param theme The theme function to use.
 #'

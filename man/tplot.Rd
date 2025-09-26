@@ -31,8 +31,7 @@ The first item is treated as the main asset, and the rest as benchmarks.}
 
 \item{geometric}{Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.}
 
-\item{normalize_risk}{Target annualized volatility (in percent) used to rescale all
-series before plotting. Use `NULL` to skip risk normalization.}
+\item{normalize_risk}{Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.}
 
 \item{format}{The output format: "viewer", "html", "json", "png", or "jpg".}
 

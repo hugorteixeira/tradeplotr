@@ -775,7 +775,7 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       startOnTick = FALSE,
       endOnTick = FALSE,
       title = list(
-        text  = paste0("Rolling Returns ", k, " p"),
+        text  = paste0("Rolling Returns ", k, "p"),
         style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,

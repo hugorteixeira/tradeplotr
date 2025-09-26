@@ -6,7 +6,7 @@ default_theme <- function(){
   list(
     palette     = c("limegreen","royalblue","orange","lightpink","red","lightgreen"),
     font_family = "Montserrat",
-    font_sizes  = list(axis=10,title=12,legend=10,table=10),
+    font_sizes  = list(axis=10,title=11,legend=10,table=10),
     colors = list(
       page_bg="#ffffff", page_txt="#000000", chart_bg="#ffffff",
       axis_txt="#000000", title_txt="#000000", legend_txt="#000000",

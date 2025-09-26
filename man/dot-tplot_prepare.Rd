@@ -11,6 +11,7 @@
   finit,
   rf_rate,
   geometric = TRUE,
+  normalize_risk = NULL,
   ativo_name = NULL,
   verbose = getOption("tplot.verbose", FALSE)
 )

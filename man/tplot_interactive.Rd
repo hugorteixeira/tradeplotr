@@ -27,8 +27,7 @@ tplot_interactive(
 
 \item{geometric}{Logical, for geometric returns.}
 
-\item{normalize_risk}{Target annualized volatility (percent) used to rescale series
-before plotting. Use `NULL` to keep original risk.}
+\item{normalize_risk}{Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.}
 
 \item{modules}{Modules to display in the app.}
 
