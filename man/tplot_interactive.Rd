@@ -10,6 +10,7 @@ tplot_interactive(
   finit = Sys.Date(),
   rf_rate = NULL,
   geometric = FALSE,
+  normalize_risk = NULL,
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
     "period", "drawdowns"),
   theme = default_theme()
@@ -25,6 +26,9 @@ tplot_interactive(
 \item{rf_rate}{The risk-free rate.}
 
 \item{geometric}{Logical, for geometric returns.}
+
+\item{normalize_risk}{Target annualized volatility (percent) used to rescale series
+before plotting. Use `NULL` to keep original risk.}
 
 \item{modules}{Modules to display in the app.}
 

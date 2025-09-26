@@ -10,6 +10,7 @@ tplot(
   finit = Sys.Date(),
   rf_rate = NULL,
   geometric = TRUE,
+  normalize_risk = NULL,
   format = c("viewer", "html", "json", "png", "jpg"),
   output_dir = "tplots",
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
@@ -29,6 +30,9 @@ The first item is treated as the main asset, and the rest as benchmarks.}
 \item{rf_rate}{The risk-free rate for calculating metrics like the Sharpe Ratio.}
 
 \item{geometric}{Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.}
+
+\item{normalize_risk}{Target annualized volatility (in percent) used to rescale all
+series before plotting. Use `NULL` to skip risk normalization.}
 
 \item{format}{The output format: "viewer", "html", "json", "png", or "jpg".}
 

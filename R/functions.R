@@ -16,6 +16,7 @@ NULL
 #' @param finit End date for the analysis in "YYYY-MM-DD" format.
 #' @param rf_rate The risk-free rate for calculating metrics like the Sharpe Ratio.
 #' @param geometric Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.
+#' @param normalize_risk Target annualized volatility (in %) used to scale all series before plotting. Use `NULL` to skip.
 #' @param format The output format: "viewer", "html", "json", "png", or "jpg".
 #' @param output_dir The directory where output files (HTML, PNG, etc.) will be saved.
 #' @param modules A character vector of modules to include in the report.
@@ -31,6 +32,7 @@ tplot <- function(...,
                   finit      = Sys.Date(),
                   rf_rate    = NULL,
                   geometric  = TRUE,
+                  normalize_risk = NULL,
                   format     = c("viewer","html","json","png","jpg"),
                   output_dir = "tplots",
                   modules    = c("stats","candles","volume","position","cumulative","rolling",
@@ -76,6 +78,41 @@ tplot <- function(...,
       items[[length(items) + 1L]] <<- list(label = sym, type = "char", value = sym)
     }
   }
+  add_obj_item <- function(obj, label) {
+    if (!is.list(obj)) return(FALSE)
+    nested_bt <- list()
+    if (length(obj) > 0) {
+      nms <- names(obj)
+      for (i in seq_along(obj)) {
+        bt <- .as_backtest(obj[[i]])
+        if (!is.null(bt)) {
+          lbl <- nms[i]
+          if (is.null(lbl) || !nzchar(lbl)) lbl <- paste0(label, "_", i)
+          base_lbl <- lbl
+          dup_idx <- 1L
+          while (!is.null(nested_bt[[lbl]])) {
+            dup_idx <- dup_idx + 1L
+            lbl <- paste0(base_lbl, "_", dup_idx)
+          }
+          nested_bt[[lbl]] <- obj[[i]]
+        }
+      }
+    }
+    if (length(nested_bt) > 0) {
+      for (nm in names(nested_bt)) {
+        label_u <- next_label(nm)
+        items[[length(items) + 1L]] <<- list(label = label_u, type = "obj", value = nested_bt[[nm]])
+      }
+      return(TRUE)
+    }
+    bt_self <- .as_backtest(obj)
+    if (!is.null(bt_self)) {
+      label_u <- next_label(label)
+      items[[length(items) + 1L]] <<- list(label = label_u, type = "obj", value = obj)
+      return(TRUE)
+    }
+    FALSE
+  }
   # recursively parse expressions without fully evaluating c()/list()
   parse_one <- function(ex) {
     if (is.symbol(ex)) {
@@ -86,6 +123,8 @@ tplot <- function(...,
           add_xts_item(obj, nm)
         } else if (is.character(obj) && length(obj) >= 1L) {
           for (s in obj) add_char_item(s)
+        } else if (add_obj_item(obj, nm)) {
+          return(invisible(NULL))
         } else {
           add_char_item(nm)
         }
@@ -112,6 +151,8 @@ tplot <- function(...,
         add_xts_item(obj, lbl)
       } else if (is.character(obj) && length(obj) >= 1L) {
         for (s in obj) add_char_item(s)
+      } else if (add_obj_item(obj, lbl)) {
+        return(invisible(NULL))
       }
       return(invisible(NULL))
     }
@@ -120,6 +161,8 @@ tplot <- function(...,
       add_xts_item(val, "Serie")
     } else if (is.character(val) && length(val) >= 1L) {
       for (s in val) add_char_item(s)
+    } else if (add_obj_item(val, "Serie")) {
+      return(invisible(NULL))
     }
     invisible(NULL)
   }
@@ -130,13 +173,13 @@ tplot <- function(...,
   ativo_item  <- items[[1]]
   bench_items <- if (length(items) > 1) items[-1] else list()
 
-  ativo_spec  <- if (ativo_item$type == "xts") ativo_item$value else ativo_item$value
-  ativo_label <- if (ativo_item$type == "xts") ativo_item$label else ativo_item$value
+  ativo_spec  <- ativo_item$value
+  ativo_label <- if (ativo_item$type %in% c("xts", "obj")) ativo_item$label else ativo_item$value
 
   bench_list  <- list()
   bench_chars <- character(0)
   for (bi in bench_items) {
-    if (bi$type == "xts") {
+    if (bi$type %in% c("xts", "obj")) {
       bench_list[[bi$label]] <- bi$value
     } else {
       bench_chars <- c(bench_chars, bi$value)
@@ -150,6 +193,7 @@ tplot <- function(...,
     theme$palette <- colorRampPalette(theme$palette)(n_assets)
 
   prep <- .tplot_prepare(ativo_spec, benchs_spec, init, finit, rf_rate, geometric,
+                         normalize_risk = normalize_risk,
                          ativo_name = ativo_label,
                          verbose = verbose)
   preparo <- Sys.time()
@@ -208,6 +252,7 @@ tplot <- function(...,
 #' @param finit End date for the analysis.
 #' @param rf_rate The risk-free rate.
 #' @param geometric Logical, for geometric returns.
+#' @param normalize_risk Target annualized volatility (%) used to scale all series before plotting. Use `NULL` to skip.
 #' @param modules Modules to display in the app.
 #' @param theme The theme function to use.
 #'
@@ -219,6 +264,7 @@ tplot_interactive <- function(...,
                               finit = Sys.Date(),
                               rf_rate = NULL,
                               geometric = FALSE,
+                              normalize_risk = NULL,
                               modules = c("stats","candles","volume","position", "cumulative","rolling", "period","drawdowns"),
                               theme = default_theme()) {
 
@@ -323,7 +369,9 @@ tplot_interactive <- function(...,
     args <- series_to_prep_args(series)
     if (is.null(args)) return(NULL)
     tryCatch({
-      .tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric, ativo_name = args$ativo_label)
+      .tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric,
+                     normalize_risk = normalize_risk,
+                     ativo_name = args$ativo_label)
     }, error = function(e) { NULL })
   }
 
@@ -353,7 +401,9 @@ tplot_interactive <- function(...,
       s <- isolate(rv$series)
       args <- series_to_prep_args(s)
       if (is.null(args)) return(NULL)
-      res <- tryCatch(.tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric, ativo_name = args$ativo_label),
+      res <- tryCatch(.tplot_prepare(args$ativoArg, args$benchesArg, init, finit, rf_rate, geometric,
+                                     normalize_risk = normalize_risk,
+                                     ativo_name = args$ativo_label),
                       error = function(e) { shiny::showNotification(paste("Error preparing data:", e$message), type = "error"); NULL })
       # if success, align rv$series order/labels with res$carteira
       if (!is.null(res)) {

@@ -333,6 +333,151 @@
   out
 }
 
+#' Normalize the volatility of a returns series to a target annualized risk (%).
+#' @keywords internal
+.normalize_risk <- function(xts, risk = 10, type = c("Discrete", "Log")) {
+  if (!requireNamespace("xts", quietly = TRUE)) {
+    stop("Package 'xts' is required.")
+  }
+
+  type <- match.arg(type)
+
+  find_returns_in_xts <- function(x) {
+    if (!xts::is.xts(x)) return(list(log = NULL, discrete = NULL))
+    cn <- colnames(x) %||% character(0)
+    lc <- tolower(cn)
+    log_idx <- which(lc == "log")
+    disc_idx <- which(lc == "discrete")
+    list(
+      log = if (length(log_idx)) x[, log_idx[1], drop = FALSE] else NULL,
+      discrete = if (length(disc_idx)) x[, disc_idx[1], drop = FALSE] else NULL
+    )
+  }
+
+  search_returns <- function(obj, depth = 0, max_depth = 4) {
+    if (depth > max_depth) return(NULL)
+    if (xts::is.xts(obj)) {
+      fr <- find_returns_in_xts(obj)
+      if (!is.null(fr$log) || !is.null(fr$discrete)) {
+        return(list(host = obj, log = fr$log, discrete = fr$discrete))
+      }
+      ra <- attr(obj, "rets")
+      if (!is.null(ra)) {
+        res <- search_returns(ra, depth + 1, max_depth)
+        if (!is.null(res)) return(res)
+      }
+      if (NCOL(obj) == 1) {
+        colnames(obj) <- "Discrete"
+        return(search_returns(obj, depth + 1, max_depth))
+      }
+      return(NULL)
+    }
+    if (is.list(obj)) {
+      nm <- names(obj)
+      if (!is.null(nm) && "rets" %in% tolower(nm)) {
+        rets_name <- nm[match("rets", tolower(nm))]
+        res <- search_returns(obj[[rets_name]], depth + 1, max_depth)
+        if (!is.null(res)) return(res)
+      }
+      for (i in seq_along(obj)) {
+        res <- search_returns(obj[[i]], depth + 1, max_depth)
+        if (!is.null(res)) return(res)
+      }
+      return(NULL)
+    }
+    ra <- attr(obj, "rets")
+    if (!is.null(ra)) {
+      res <- search_returns(ra, depth + 1, max_depth)
+      if (!is.null(res)) return(res)
+    }
+    NULL
+  }
+
+  periods_per_year <- function(x) {
+    if (!xts::is.xts(x)) stop("periods_per_year requires an xts object.")
+    idx <- index(x)
+    if (length(idx) < 2) return(NA_real_)
+    p <- tryCatch(xts::periodicity(x)$scale, error = function(e) NA_character_)
+    if (!is.na(p)) {
+      p <- tolower(p)
+      if (p == "daily") {
+        w <- weekdays(as.Date(idx))
+        frac_weekend <- mean(w %in% c("Saturday", "Sunday"))
+        return(if (is.na(frac_weekend) || frac_weekend > 0.05) 365.25 else 252)
+      } else if (p == "weekly") {
+        return(52)
+      } else if (p == "monthly") {
+        return(12)
+      } else if (p == "quarterly") {
+        return(4)
+      } else if (p == "yearly") {
+        return(1)
+      }
+    }
+    dt <- stats::median(diff(as.numeric(idx)))
+    if (is.na(dt) || dt <= 0) return(NA_real_)
+    if (inherits(idx, "Date")) {
+      secs_per_period <- dt * 86400
+    } else {
+      secs_per_period <- dt
+    }
+    as.numeric((365.25 * 24 * 3600) / secs_per_period)
+  }
+
+  annualized_vol <- function(r, ppy) {
+    rnum <- as.numeric(r)
+    rnum <- rnum[is.finite(rnum)]
+    if (length(rnum) < 2) return(NA_real_)
+    stats::sd(rnum) * sqrt(ppy)
+  }
+
+  found <- search_returns(xts)
+  if (is.null(found)) {
+    stop("Could not locate 'Log' or 'Discrete' returns in the provided object.")
+  }
+
+  if (!is.null(found$log)) {
+    r_log <- found$log
+  } else if (!is.null(found$discrete)) {
+    disc <- as.numeric(found$discrete)
+    if (any(!is.finite(disc))) {
+      warning("Non-finite values found in 'Discrete' returns; they will be kept as NA.")
+    }
+    if (any(disc <= -1, na.rm = TRUE)) {
+      stop("Discrete returns contain values <= -1, cannot convert to log returns.")
+    }
+    r_log <- xts::xts(log1p(disc), order.by = index(found$discrete))
+    colnames(r_log) <- "Log"
+  } else {
+    stop("Internal error: neither 'Log' nor 'Discrete' returns found after search.")
+  }
+
+  ppy <- periods_per_year(r_log)
+  if (!is.finite(ppy) || ppy <= 0) {
+    stop("Could not determine periods-per-year (annualization factor).")
+  }
+
+  vol_ann <- annualized_vol(r_log, ppy)
+  if (!is.finite(vol_ann) || vol_ann <= 0) {
+    stop("Realized volatility is zero or undefined; cannot normalize risk.")
+  }
+
+  target_vol_ann <- risk / 100
+  scale_factor <- as.numeric(target_vol_ann / vol_ann)
+
+  r_log_scaled <- r_log * scale_factor
+
+  if (identical(type, "Log")) {
+    out <- r_log_scaled
+    colnames(out) <- "Log"
+  } else {
+    out <- xts::xts(exp(as.numeric(r_log_scaled)) - 1, order.by = index(r_log_scaled))
+    colnames(out) <- "Discrete"
+  }
+
+  out
+}
+
 #' Determine which modules can be rendered based on prepared data
 #' @param prep The list of data prepared by .tplot_prepare.
 #' @return A character vector with the names of available modules.
@@ -1128,6 +1273,7 @@ fix_pkg <- function(x) {
 #' @return A large list containing all data and metrics prepared for the modules.
 #' @keywords internal
 .tplot_prepare <- function(ativo, benchs, init, finit, rf_rate, geometric = TRUE,
+                           normalize_risk = NULL,
                            ativo_name = NULL,
                            verbose = getOption("tplot.verbose", FALSE)) {
   vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
@@ -1199,9 +1345,33 @@ fix_pkg <- function(x) {
       vmsg(sprintf("[.tplot_prepare] Loaded PortfReturns for '%s' | rows=%d", pf_name, NROW(port_rets)))
     }
   }
+  ativo_obj         <- if (!is.character(ativo)) ativo else .get_object_if_exists(ativo)
+  ativo_source_obj  <- ativo_obj
   # If no quantstrat portfolio detected, try a generic backtest object in the env
   if (is.null(mktdata) && is.null(trades)) {
-    bt_env <- .as_backtest(if (!is.character(ativo)) ativo else .get_object_if_exists(ativo))
+    bt_env <- .as_backtest(ativo_obj)
+    if (is.null(bt_env) && is.list(ativo_obj) && length(ativo_obj) > 0) {
+      nested_bt <- lapply(ativo_obj, .as_backtest)
+      valid_idx <- which(!vapply(nested_bt, is.null, logical(1), USE.NAMES = FALSE))
+      if (length(valid_idx) > 0) {
+        idx_use <- valid_idx[1]
+        bt_env  <- nested_bt[[idx_use]]
+        if (is.list(ativo_obj[[idx_use]])) {
+          ativo_source_obj <- ativo_obj[[idx_use]]
+        }
+        nm_use <- names(ativo_obj)
+        if (!is.null(nm_use) && length(nm_use) >= idx_use) {
+          chosen_label <- nm_use[[idx_use]]
+          if (!is.null(chosen_label) && nzchar(chosen_label)) {
+            if (is.null(ativo_name) || identical(ativo_name, ativo)) {
+              ativo_name <- chosen_label
+            }
+          }
+        } else if (is.null(ativo_name) || identical(ativo_name, ativo)) {
+          ativo_name <- paste0("Asset", idx_use)
+        }
+      }
+    }
     if (!is.null(bt_env)) {
       from_backtest <- TRUE
       mktdata <- bt_env$mktdata %||% NULL
@@ -1229,9 +1399,8 @@ fix_pkg <- function(x) {
         ativo_name <- sym_from_stats
       } else if (is.null(ativo_name)) {
         # Fallback: if original object is a list, try first element name
-        obj0 <- if (!is.character(ativo)) ativo else .get_object_if_exists(ativo)
-        if (is.list(obj0)) {
-          nms <- names(obj0)
+        if (is.list(ativo_source_obj)) {
+          nms <- names(ativo_source_obj)
           if (!is.null(nms) && length(nms) > 0 && nzchar(nms[1])) ativo_name <- nms[1]
         }
       }
@@ -1561,6 +1730,44 @@ fix_pkg <- function(x) {
   benchs_labels <- if (length(keep_cols) > 1) keep_cols[-1] else character(0)
   # Build two views: full (outer-joined) and common (intersection of all series)
   carteira_full  <- dados_trat[, keep_cols, drop = FALSE]
+
+  risk_applied <- NULL
+  if (!is.null(normalize_risk)) {
+    risk_target <- suppressWarnings(as.numeric(normalize_risk[1]))
+    if (!is.finite(risk_target) || risk_target <= 0) {
+      warning("'normalize_risk' must be a positive numeric value. Ignoring request.")
+    } else if (length(keep_cols) > 0) {
+      normalized_cols <- list()
+      for (col in keep_cols) {
+        series_orig <- carteira_full[, col, drop = FALSE]
+        if (NROW(series_orig) == 0 || all(is.na(series_orig))) next
+        base_xts <- xts::xts(series_orig[, 1], order.by = index(series_orig))
+        colnames(base_xts) <- "Discrete"
+        scaled <- tryCatch(
+          .normalize_risk(base_xts, risk = risk_target, type = "Discrete"),
+          error = function(e) {
+            warning(sprintf("Could not normalize risk for '%s': %s", col, conditionMessage(e)))
+            NULL
+          }
+        )
+        if (!is.null(scaled) && xts::is.xts(scaled)) {
+          scaled <- scaled[index(base_xts)]
+          colnames(scaled) <- col
+          normalized_cols[[col]] <- scaled
+        }
+      }
+      if (length(normalized_cols) > 0) {
+        for (col in names(normalized_cols)) {
+          carteira_full[, col] <- normalized_cols[[col]]
+          if (col %in% colnames(dados_trat)) {
+            dados_trat[, col] <- normalized_cols[[col]][index(dados_trat)]
+          }
+        }
+        risk_applied <- risk_target
+        vmsg(sprintf("[.tplot_prepare] Applied risk normalization target: %.4f%%", risk_target))
+      }
+    }
+  }
   # Keep only rows where all selected series have data for fair charting/metrics
   complete_rows  <- apply(!is.na(carteira_full), 1, all)
   if (!any(complete_rows)) {
@@ -1686,6 +1893,8 @@ fix_pkg <- function(x) {
     datas       = datas,
     lista_tabs  = lista_tabs
   )
+
+  if (!is.null(risk_applied)) resultado$normalize_risk <- risk_applied
 
   # 11) Conditionally attach backtest extras
   if (!is.null(mktdata)) resultado$mktdata <- mktdata
