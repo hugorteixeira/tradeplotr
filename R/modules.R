@@ -254,6 +254,250 @@ volume_module <- function(mktdata, theme){
 #' @keywords internal
 candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   comeca <- Sys.time()
+
+  # Initial validations
+  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
+  if (has_txns) {
+    cat(" -> Trades detected.\n")
+    buys  <- txns[ txns$Txn.Qty >  0 , ]
+    sells <- txns[ txns$Txn.Qty <  0 , ]
+  }
+
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+
+  if(.isDI(mktdata)){
+    cat(" -> Futures data detected (Brazilian DI).\n")
+    std <- mktdata
+  } else {
+    std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  }
+
+  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+
+  di_flag       <- .isDI(std)
+  maturity_date <- attr(std, "maturity")
+  if(!is.null(maturity_date)) cat(" -> Futures maturity date is",maturity_date,".\n")
+
+  # Theme colors and config
+  pal  <- theme$palette
+  corx <- pal[1]  # Buy color (limegreen)
+  cory <- pal[5]  # Sell color (red)
+  cl   <- theme$colors
+
+  # Candle config
+  candle_cfg <- theme$candles
+  cheight <- candle_cfg$height
+  cup   <- candle_cfg$up_color
+  cdown <- candle_cfg$down_color
+
+  # Font configuration from theme
+  font_family <- theme$font_family
+  font_size_axis <- theme$font_sizes$axis
+  font_size_legend <- theme$font_sizes$legend
+
+  # Timezone
+  tzone(std) <- "America/Sao_Paulo"
+
+  # Adjust trade prices if DI futures
+  if (has_txns && di_flag && !is.null(maturity_date)){
+    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys),
+                              MoreArgs = list(maturity = maturity_date))
+    sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells),
+                              MoreArgs = list(maturity = maturity_date))
+  }
+
+  # For DI, invert buy/sell
+  if (has_txns && di_flag){
+    tmp <- buys
+    buys <- sells
+    sells <- tmp
+  }
+
+  # Check for Donchian channels (columns starting with X and Y)
+  has_donchian <- FALSE
+  donchian_upper <- NULL
+  donchian_lower <- NULL
+
+  col_names <- colnames(std)
+  x_cols <- grep("^X", col_names, value = TRUE)
+  y_cols <- grep("^Y", col_names, value = TRUE)
+
+  if (length(x_cols) > 0 && length(y_cols) > 0) {
+    has_donchian <- TRUE
+    donchian_upper <- std[, x_cols[1]]
+    donchian_lower <- std[, y_cols[1]]
+    cat(" -> Donchian channels detected.\n")
+  }
+
+  # Prepare series with trade signals as events
+  if (has_txns) {
+    # Create xts with event markers
+    std$buy_signal  <- NA
+    std$sell_signal <- NA
+
+    if (nrow(buys) > 0) {
+      buys_idx <- index(buys)
+      # Find closest indices in std
+      for(i in seq_len(nrow(buys))) {
+        closest_idx <- which.min(abs(index(std) - buys_idx[i]))
+        if(length(closest_idx) > 0) {
+          std$buy_signal[closest_idx] <- as.numeric(buys$Txn.Price[i])
+        }
+      }
+    }
+
+    if (nrow(sells) > 0) {
+      sells_idx <- index(sells)
+      for(i in seq_len(nrow(sells))) {
+        closest_idx <- which.min(abs(index(std) - sells_idx[i]))
+        if(length(closest_idx) > 0) {
+          std$sell_signal[closest_idx] <- as.numeric(sells$Txn.Price[i])
+        }
+      }
+    }
+  }
+
+  # Create dygraphs chart
+  library(dygraphs)
+
+  # Prepare OHLC column names
+  ohlc_data <- std[, 1:4]
+  colnames(ohlc_data) <- c("Open", "High", "Low", "Close")
+
+  # Merge Donchian channels if present
+  if (has_donchian) {
+    ohlc_data <- merge(ohlc_data,
+                       Donchian.Upper = donchian_upper,
+                       Donchian.Lower = donchian_lower)
+  }
+
+  # Merge trade signals if present
+  if (has_txns) {
+    if (nrow(buys) > 0) {
+      ohlc_data <- merge(ohlc_data, buy_signal = std$buy_signal)
+    }
+    if (nrow(sells) > 0) {
+      ohlc_data <- merge(ohlc_data, sell_signal = std$sell_signal)
+    }
+  }
+
+  df <- data.frame(
+    timestamp_real = index(ohlc_data),  # Mantém para referência
+    coredata(ohlc_data)
+  )
+
+  # Create base chart
+  dg <- dygraph(ohlc_data,
+                width = "100%",
+                height = cheight) %>%
+    dyCandlestick() %>%
+    dyRangeSelector(
+      height = 20,
+      fillColor = cl$range_selector_bg,
+      strokeColor = cl$range_selector_border
+    ) %>%
+    dyOptions(
+      useDataTimezone = TRUE,
+      drawPoints = FALSE,
+      strokeWidth = 0.3,
+      axisLineColor = cl$axis_txt,
+      gridLineColor = "#e8e8e8",
+      axisLabelFontSize = font_size_axis,
+      labelsKMB = FALSE
+    ) %>%
+    dyAxis("y",
+           label =      asset_name,
+           valueFormatter = 'function(d){return d.toFixed(2)}',
+           axisLabelFormatter = 'function(d){return d.toFixed(2)}') %>%
+    dyLegend(
+      show = "follow",
+      width = 200,
+      hideOnMouseOut = TRUE,
+      labelsSeparateLines = TRUE
+    ) %>%
+    dyCSS(textConnection(paste0("
+      .dygraph-legend {
+        font-family: '", font_family, "', sans-serif !important;
+        font-size: ", font_size_legend, "px !important;
+        font-weight: bold;
+        background-color: ", cl$chart_bg, " !important;
+        border: 1px solid ", cl$axis_txt, " !important;
+        padding: 5px !important;
+        color: ", cl$legend_txt, " !important;
+      }
+      .dygraph-axis-label {
+        font-family: '", font_family, "', sans-serif !important;
+        font-size: ", font_size_axis, "px !important;
+        font-weight: bold;
+        color: ", cl$axis_txt, " !important;
+      }
+      .dygraph-xlabel, .dygraph-ylabel {
+        font-family: '", font_family, "', sans-serif !important;
+        font-size: ", font_size_axis, "px !important;
+        font-weight: bold;
+        color: ", cl$axis_txt, " !important;
+      }
+      .dygraph-axis-label-y {
+        font-family: '", font_family, "', sans-serif !important;
+        color: ", cl$axis_txt, " !important;
+        font-weight: bold;
+      }
+      .dygraph-axis-label-x {
+        font-family: '", font_family, "', sans-serif !important;
+        color: ", cl$axis_txt, " !important;
+        font-weight: bold;
+      }
+    ")))
+
+  # Add Donchian channels if present
+  if (has_donchian) {
+    dg <- dg %>%
+      dySeries("Donchian.Upper",
+               label = "Donchian Upper",
+               color = pal[2],  # royalblue
+               strokeWidth = 1.5,
+               strokePattern = "dashed",
+               fillGraph = FALSE) %>%
+      dySeries("Donchian.Lower",
+               label = "Donchian Lower",
+               color = pal[3],  # orange
+               strokeWidth = 1.5,
+               strokePattern = "dashed",
+               fillGraph = FALSE)
+  }
+
+  # Add buy signals if present
+  if (has_txns && nrow(buys) > 0) {
+    dg <- dg %>%
+      dySeries("buy_signal",
+               label = "Buys",
+               color = corx,
+               strokeWidth = 0,
+               drawPoints = TRUE,
+               pointSize = 5,
+               fillGraph = FALSE)
+  }
+
+  # Add sell signals if present
+  if (has_txns && nrow(sells) > 0) {
+    dg <- dg %>%
+      dySeries("sell_signal",
+               label = "Sells",
+               color = cory,
+               strokeWidth = 0,
+               drawPoints = TRUE,
+               pointSize = 5,
+               fillGraph = FALSE)
+  }
+
+  termina <- Sys.time()
+  message(sprintf("Module 'candles' rendered in %.2f seconds.",
+                  as.numeric(difftime(termina, comeca, units = 'secs'))))
+
+  return(dg)
+}
+candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
+  comeca <- Sys.time()
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
   if (has_txns) {
     cat(" -> Trades detected.\n")
