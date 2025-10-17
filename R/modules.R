@@ -5,56 +5,60 @@
 #' @param theme The theme list object.
 #' @return An HTML object containing the statistics table.
 #' @keywords internal
-stats_module <- function(stats_df, asset, benchmarks, theme){
+stats_module <- function(stats_df, asset, benchmarks, theme) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; todos <- c(asset, benchmarks)
+  pal <- theme$palette
+  cl <- theme$colors
+  todos <- c(asset, benchmarks)
   html <- paste0(
-    #"<h3 style='font-family:",theme$font_family,
-    #";font-size:",theme$font_sizes$title,"px;font-weight:bold;margin:20px 0;",
-    #"color:",cl$title_txt,";'>Performance Stats</h3>",
+    # "<h3 style='font-family:",theme$font_family,
+    # ";font-size:",theme$font_sizes$title,"px;font-weight:bold;margin:20px 0;",
+    # "color:",cl$title_txt,";'>Performance Stats</h3>",
     # Container with horizontal overflow
     "<div style='width:100%;max-width:100%;margin:0;padding:0;",
     "overflow-x:auto;overflow-y:visible;'>",
-    "<table style='min-width:100%;font-family:",theme$font_family,
+    "<table style='min-width:100%;font-family:", theme$font_family,
     ";table-layout:auto;white-space:nowrap;", # changed to nowrap
-    "background-color:",cl$page_bg,";border-collapse:collapse;'>"
+    "background-color:", cl$page_bg, ";border-collapse:collapse;'>"
   )
-  html <- paste0(html,"<tr>")
-  for(coluna in colnames(stats_df)){
+  html <- paste0(html, "<tr>")
+  for (coluna in colnames(stats_df)) {
     html <- paste0(
       html,
-      "<th style='background-color:",cl$table_header_bg,
-      ";color:",cl$table_header_txt,
-      ";padding:8px 12px;font-family:",theme$font_family,
-      ";font-size:",theme$font_sizes$table,"px;font-weight:bold;",
+      "<th style='background-color:", cl$table_header_bg,
+      ";color:", cl$table_header_txt,
+      ";padding:8px 12px;font-family:", theme$font_family,
+      ";font-size:", theme$font_sizes$table, "px;font-weight:bold;",
       "border:1px solid rgba(0,0,0,0.1);'>",
-      coluna,"</th>"
+      coluna, "</th>"
     )
   }
-  html <- paste0(html,"</tr>")
-  for(i in seq_len(nrow(stats_df))){
+  html <- paste0(html, "</tr>")
+  for (i in seq_len(nrow(stats_df))) {
     # safe color lookup: match ativo against palette, fallback to first color
     pal_idx <- match(stats_df$Asset[i], todos)
     pal_col <- if (!is.na(pal_idx) && pal_idx <= length(pal)) pal[pal_idx] else pal[1]
-    rgb_col <- tryCatch(grDevices::col2rgb(pal_col), error = function(e) matrix(c(200,200,200), ncol = 1))
-    cor <- paste0("rgba(", paste(rgb_col[,1], collapse = ","), ",0.2)")
-    html <- paste0(html,"<tr style='background-color:",cor,";'>")
-    for(j in seq_len(ncol(stats_df))){
+    rgb_col <- tryCatch(grDevices::col2rgb(pal_col), error = function(e) matrix(c(200, 200, 200), ncol = 1))
+    cor <- paste0("rgba(", paste(rgb_col[, 1], collapse = ","), ",0.2)")
+    html <- paste0(html, "<tr style='background-color:", cor, ";'>")
+    for (j in seq_len(ncol(stats_df))) {
       html <- paste0(
         html,
-        "<td style='padding:8px 12px;font-family:",theme$font_family,
-        ";font-size:",theme$font_sizes$table,
-        "px;color:",cl$table_row_txt,
+        "<td style='padding:8px 12px;font-family:", theme$font_family,
+        ";font-size:", theme$font_sizes$table,
+        "px;color:", cl$table_row_txt,
         ";border:1px solid rgba(0,0,0,0.1);'>", # subtle border
-        stats_df[i,j],"</td>"
+        stats_df[i, j], "</td>"
       )
     }
-    html <- paste0(html,"</tr>")
+    html <- paste0(html, "</tr>")
   }
-  html <- paste0(html,"</table></div>")
+  html <- paste0(html, "</table></div>")
   termina <- Sys.time()
-  message(sprintf("Module 'stats' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'stats' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   HTML(html)
 }
 
@@ -65,21 +69,26 @@ stats_module <- function(stats_df, asset, benchmarks, theme){
 #' @param theme The theme list object.
 #' @return An HTML object containing the returns tables.
 #' @keywords internal
-rentab_table_module <- function(returns_tables, asset, benchmarks, theme){
+rentab_table_module <- function(returns_tables, asset, benchmarks, theme) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; todos <- c(asset, benchmarks)
+  pal <- theme$palette
+  cl <- theme$colors
+  todos <- c(asset, benchmarks)
   html <- ""
-  for(nome in names(returns_tables)){
-    dados <- returns_tables[[nome]]; anos <- nrow(dados)
+  for (nome in names(returns_tables)) {
+    dados <- returns_tables[[nome]]
+    anos <- nrow(dados)
     # dynamic name cell: wrap long names into two lines and reduce font only for the name
-    name_cell <- (function(nm){
-      base_style <- paste0('background-color:',cl$table_header_bg,
-                           ';color:',cl$table_header_txt,
-                           ';padding:8px 12px;font-family:',theme$font_family,
-                           ';font-size:',theme$font_sizes$table,'px;font-weight:bold;',
-                           'border:1px solid rgba(0,0,0,0.1);')
+    name_cell <- (function(nm) {
+      base_style <- paste0(
+        "background-color:", cl$table_header_bg,
+        ";color:", cl$table_header_txt,
+        ";padding:8px 12px;font-family:", theme$font_family,
+        ";font-size:", theme$font_sizes$table, "px;font-weight:bold;",
+        "border:1px solid rgba(0,0,0,0.1);"
+      )
       if (!is.character(nm) || nchar(nm) <= 16) {
-        return(paste0('<th style="', base_style, '">', nm, '</th>'))
+        return(paste0('<th style="', base_style, '">', nm, "</th>"))
       }
       # Try to split at underscore near 16 chars; fallback to hard split
       split_pos <- regexpr("_", substr(nm, 8, 20))
@@ -91,65 +100,71 @@ rentab_table_module <- function(returns_tables, asset, benchmarks, theme){
       first <- substr(nm, 1, cut_at)
       second <- substr(nm, cut_at + 1, nchar(nm))
       small <- max(8, theme$font_sizes$table - 2)
-      paste0('<th style="', base_style, '"><div style="white-space:normal;word-break:break-word;line-height:1.1;font-size:', small, 'px;">',
-             first, '<br>', second, '</div></th>')
+      paste0(
+        '<th style="', base_style, '"><div style="white-space:normal;word-break:break-word;line-height:1.1;font-size:', small, 'px;">',
+        first, "<br>", second, "</div></th>"
+      )
     })(nome)
     header <- paste0(
       name_cell,
       paste(
         sprintf(
           '<th style="background-color:%s;color:%s;padding:8px 12px;font-family:%s;font-size:%dpx;font-weight:bold;border:1px solid rgba(0,0,0,0.1);">%s</th>',
-          cl$table_header_bg,cl$table_header_txt,
-          theme$font_family,theme$font_sizes$table,
+          cl$table_header_bg, cl$table_header_txt,
+          theme$font_family, theme$font_sizes$table,
           colnames(dados)
         ),
-        collapse=""
+        collapse = ""
       )
     )
     linhas <- character(anos)
-    for(i in seq_len(anos)){
+    for (i in seq_len(anos)) {
       # safe color lookup for this table
       pal_idx <- match(nome, todos)
       pal_col <- if (!is.na(pal_idx) && pal_idx <= length(pal)) pal[pal_idx] else pal[1]
-      rgb_col <- tryCatch(grDevices::col2rgb(pal_col), error = function(e) matrix(c(200,200,200), ncol = 1))
-      cor <- paste0("rgba(", paste(rgb_col[,1], collapse = ","), ",0.2)")
-      cel <- sapply(dados[i, ], function(v){
-        if(is.na(v)){
+      rgb_col <- tryCatch(grDevices::col2rgb(pal_col), error = function(e) matrix(c(200, 200, 200), ncol = 1))
+      cor <- paste0("rgba(", paste(rgb_col[, 1], collapse = ","), ",0.2)")
+      cel <- sapply(dados[i, ], function(v) {
+        if (is.na(v)) {
           sprintf(
             '<td style="padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);">-</td>',
-            theme$font_family,theme$font_sizes$table,cl$table_row_txt
+            theme$font_family, theme$font_sizes$table, cl$table_row_txt
           )
-        } else if(is.character(v)){
+        } else if (is.character(v)) {
           sprintf(
             '<td style="padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);">%s</td>',
-            theme$font_family,theme$font_sizes$table,cl$table_row_txt,v
+            theme$font_family, theme$font_sizes$table, cl$table_row_txt, v
           )
         } else {
           sprintf(
             '<td style="padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);">%.2f%%</td>',
-            theme$font_family,theme$font_sizes$table,cl$table_row_txt,as.numeric(v)
+            theme$font_family, theme$font_sizes$table, cl$table_row_txt, as.numeric(v)
           )
         }
       })
       linhas[i] <- sprintf(
         '<tr style="background-color:%s;"><td style="padding:8px 12px;font-family:%s;font-size:%dpx;color:%s;border:1px solid rgba(0,0,0,0.1);">%s</td>%s</tr>',
-        cor,theme$font_family,theme$font_sizes$table,cl$table_row_txt,
-        rownames(dados)[i], paste(cel, collapse="")
+        cor, theme$font_family, theme$font_sizes$table, cl$table_row_txt,
+        rownames(dados)[i], paste(cel, collapse = "")
       )
     }
     html <- paste0(
-      html, sprintf('
+      html, sprintf(
+        '
       <div id="tabela-%s" class="tabela-retornos" style="margin:20px 0 0 0;width:100%%;max-width:100%%;overflow-x:auto;overflow-y:visible;">
         <table style="min-width:100%%;font-family:%s;table-layout:auto;white-space:nowrap;border-collapse:collapse;background-color:%s;">
           <tr>%s</tr>%s
         </table>
       </div>',
-                    nome, theme$font_family, cl$page_bg, header, paste(linhas, collapse="\n")
-      ))
+        nome, theme$font_family, cl$page_bg, header, paste(linhas, collapse = "\n")
+      )
+    )
   }
   termina <- Sys.time()
-  message(sprintf("Module 'returns_table' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'returns_table' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   HTML(html)
 }
 
@@ -191,51 +206,68 @@ rentab_table_calc <- function(series_object, retornar = TRUE, geometric = geomet
 #' @param theme The theme list object.
 #' @return An HTML object containing the footer text.
 #' @keywords internal
-footer_module <- function(theme){
+footer_module <- function(theme) {
   comeca <- Sys.time()
   cl <- theme$colors
   ui <- tags$div(
-    style=paste0(
-      "text-align:center;font-family:",theme$ft_font_family,
-      ";font-size:",theme$ft_font_size,";font-weight:bold;margin:",theme$ft_margin,
-      ";color:",cl$footer_txt,";"
+    style = paste0(
+      "text-align:center;font-family:", theme$ft_font_family,
+      ";font-size:", theme$ft_font_size, ";font-weight:bold;margin:", theme$ft_margin,
+      ";color:", cl$footer_txt, ";"
     ),
     theme$footer_text
   )
   termina <- Sys.time()
-  message(sprintf("Module 'footer' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'footer' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   ui
 }
 
 # Simplified Volume module (separate from candles)
 #' @keywords internal
-volume_module <- function(mktdata, theme){
-  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+volume_module <- function(mktdata, theme) {
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) {
+    return(NULL)
+  }
   std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
-  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  if (inherits(std, "try-error") || is.null(std)) {
+    return(NULL)
+  }
   # Deduplicate repeated timestamps (keep last occurrence)
   std <- std[!duplicated(index(std), fromLast = TRUE), ]
   # Deduplicate repeated timestamps (keep last)
   std <- std[!duplicated(index(std), fromLast = TRUE), ]
-  if (!("Volume" %in% colnames(std))) return(NULL)
+  if (!("Volume" %in% colnames(std))) {
+    return(NULL)
+  }
 
-  pal <- theme$palette; cl <- theme$colors; hei <- theme$volume$height
-  ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
+  pal <- theme$palette
+  cl <- theme$colors
+  hei <- theme$volume$height
+  ix_to_ms <- function(ix) {
+    if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC")) * 1000 else as.numeric(ix) * 1000
+  }
   idx_ms <- ix_to_ms(index(std))
-  vol_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], y = as.numeric(std$Volume[i])) })
+  vol_data <- lapply(seq_len(nrow(std)), function(i) {
+    list(x = idx_ms[i], y = as.numeric(std$Volume[i]))
+  })
 
   hc <- highcharter::highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
-      margin  = theme$hc_margin,
+      margin = theme$hc_margin,
       backgroundColor = cl$chart_bg,
-      renderTo = "volume-chart"
-    , zoomType = "x", panning = list(enabled = TRUE, type = "x"), panKey = "shift") %>%
+      renderTo = "volume-chart",
+      zoomType = "x", panning = list(enabled = TRUE, type = "x"), panKey = "shift"
+    ) %>%
     hc_xAxis(type = "datetime", labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
-    hc_yAxis(title = list(text = "Volume", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
-             labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))) %>%
+    hc_yAxis(
+      title = list(text = "Volume", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
+      labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold"))
+    ) %>%
     hc_plotOptions(column = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_add_series(data = vol_data, type = "column", color = pal[1], name = "Volume", showInLegend = FALSE) %>%
     hc_tooltip(xDateFormat = "%Y-%m-%d") %>%
@@ -252,42 +284,46 @@ volume_module <- function(mktdata, theme){
 
 # Override candles module with axis-safe, volume-free version
 #' @keywords internal
-candles_module <- function(mktdata, txns, theme, asset_name = NULL){
+candles_module_dg <- function(mktdata, txns, theme, asset_name = NULL) {
   comeca <- Sys.time()
 
   # Initial validations
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
   if (has_txns) {
     cat(" -> Trades detected.\n")
-    buys  <- txns[ txns$Txn.Qty >  0 , ]
-    sells <- txns[ txns$Txn.Qty <  0 , ]
+    buys <- txns[txns$Txn.Qty > 0, ]
+    sells <- txns[txns$Txn.Qty < 0, ]
   }
 
-  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) {
+    return(NULL)
+  }
 
-  if(.isDI(mktdata)){
+  if (.isDI(mktdata)) {
     cat(" -> Futures data detected (Brazilian DI).\n")
     std <- mktdata
   } else {
     std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
   }
 
-  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  if (inherits(std, "try-error") || is.null(std)) {
+    return(NULL)
+  }
 
-  di_flag       <- .isDI(std)
+  di_flag <- .isDI(std)
   maturity_date <- attr(std, "maturity")
-  if(!is.null(maturity_date)) cat(" -> Futures maturity date is",maturity_date,".\n")
+  if (!is.null(maturity_date)) cat(" -> Futures maturity date is", maturity_date, ".\n")
 
   # Theme colors and config
-  pal  <- theme$palette
-  corx <- pal[1]  # Buy color (limegreen)
-  cory <- pal[5]  # Sell color (red)
-  cl   <- theme$colors
+  pal <- theme$palette
+  corx <- pal[1] # Buy color (limegreen)
+  cory <- pal[5] # Sell color (red)
+  cl <- theme$colors
 
   # Candle config
   candle_cfg <- theme$candles
   cheight <- candle_cfg$height
-  cup   <- candle_cfg$up_color
+  cup <- candle_cfg$up_color
   cdown <- candle_cfg$down_color
 
   # Font configuration from theme
@@ -299,15 +335,17 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   tzone(std) <- "America/Sao_Paulo"
 
   # Adjust trade prices if DI futures
-  if (has_txns && di_flag && !is.null(maturity_date)){
-    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys),
-                              MoreArgs = list(maturity = maturity_date))
+  if (has_txns && di_flag && !is.null(maturity_date)) {
+    buys$Txn.Price <- mapply(get_DI_price, buys$Txn.Price, index(buys),
+      MoreArgs = list(maturity = maturity_date)
+    )
     sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells),
-                              MoreArgs = list(maturity = maturity_date))
+      MoreArgs = list(maturity = maturity_date)
+    )
   }
 
   # For DI, invert buy/sell
-  if (has_txns && di_flag){
+  if (has_txns && di_flag) {
     tmp <- buys
     buys <- sells
     sells <- tmp
@@ -332,15 +370,15 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   # Prepare series with trade signals as events
   if (has_txns) {
     # Create xts with event markers
-    std$buy_signal  <- NA
+    std$buy_signal <- NA
     std$sell_signal <- NA
 
     if (nrow(buys) > 0) {
       buys_idx <- index(buys)
       # Find closest indices in std
-      for(i in seq_len(nrow(buys))) {
+      for (i in seq_len(nrow(buys))) {
         closest_idx <- which.min(abs(index(std) - buys_idx[i]))
-        if(length(closest_idx) > 0) {
+        if (length(closest_idx) > 0) {
           std$buy_signal[closest_idx] <- as.numeric(buys$Txn.Price[i])
         }
       }
@@ -348,9 +386,9 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
 
     if (nrow(sells) > 0) {
       sells_idx <- index(sells)
-      for(i in seq_len(nrow(sells))) {
+      for (i in seq_len(nrow(sells))) {
         closest_idx <- which.min(abs(index(std) - sells_idx[i]))
-        if(length(closest_idx) > 0) {
+        if (length(closest_idx) > 0) {
           std$sell_signal[closest_idx] <- as.numeric(sells$Txn.Price[i])
         }
       }
@@ -367,8 +405,9 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   # Merge Donchian channels if present
   if (has_donchian) {
     ohlc_data <- merge(ohlc_data,
-                       Donchian.Upper = donchian_upper,
-                       Donchian.Lower = donchian_lower)
+      Donchian.Upper = donchian_upper,
+      Donchian.Lower = donchian_lower
+    )
   }
 
   # Merge trade signals if present
@@ -382,14 +421,15 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   }
 
   df <- data.frame(
-    timestamp_real = index(ohlc_data),  # Mantém para referência
+    timestamp_real = index(ohlc_data), # Mantém para referência
     coredata(ohlc_data)
   )
 
   # Create base chart
   dg <- dygraph(ohlc_data,
-                width = "100%",
-                height = cheight) %>%
+    width = "100%",
+    height = cheight
+  ) %>%
     dyCandlestick() %>%
     dyRangeSelector(
       height = 20,
@@ -406,9 +446,10 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
       labelsKMB = FALSE
     ) %>%
     dyAxis("y",
-           label =      asset_name,
-           valueFormatter = 'function(d){return d.toFixed(2)}',
-           axisLabelFormatter = 'function(d){return d.toFixed(2)}') %>%
+      label = asset_name,
+      valueFormatter = "function(d){return d.toFixed(2)}",
+      axisLabelFormatter = "function(d){return d.toFixed(2)}"
+    ) %>%
     dyLegend(
       show = "follow",
       width = 200,
@@ -453,102 +494,124 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL){
   if (has_donchian) {
     dg <- dg %>%
       dySeries("Donchian.Upper",
-               label = "Donchian Upper",
-               color = pal[2],  # royalblue
-               strokeWidth = 1.5,
-               strokePattern = "dashed",
-               fillGraph = FALSE) %>%
+        label = "Donchian Upper",
+        color = pal[2], # royalblue
+        strokeWidth = 1.5,
+        strokePattern = "dashed",
+        fillGraph = FALSE
+      ) %>%
       dySeries("Donchian.Lower",
-               label = "Donchian Lower",
-               color = pal[3],  # orange
-               strokeWidth = 1.5,
-               strokePattern = "dashed",
-               fillGraph = FALSE)
+        label = "Donchian Lower",
+        color = pal[3], # orange
+        strokeWidth = 1.5,
+        strokePattern = "dashed",
+        fillGraph = FALSE
+      )
   }
 
   # Add buy signals if present
   if (has_txns && nrow(buys) > 0) {
     dg <- dg %>%
       dySeries("buy_signal",
-               label = "Buys",
-               color = corx,
-               strokeWidth = 0,
-               drawPoints = TRUE,
-               pointSize = 5,
-               fillGraph = FALSE)
+        label = "Buys",
+        color = corx,
+        strokeWidth = 0,
+        drawPoints = TRUE,
+        pointSize = 5,
+        fillGraph = FALSE
+      )
   }
 
   # Add sell signals if present
   if (has_txns && nrow(sells) > 0) {
     dg <- dg %>%
       dySeries("sell_signal",
-               label = "Sells",
-               color = cory,
-               strokeWidth = 0,
-               drawPoints = TRUE,
-               pointSize = 5,
-               fillGraph = FALSE)
+        label = "Sells",
+        color = cory,
+        strokeWidth = 0,
+        drawPoints = TRUE,
+        pointSize = 5,
+        fillGraph = FALSE
+      )
   }
 
   termina <- Sys.time()
-  message(sprintf("Module 'candles' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = 'secs'))))
+  message(sprintf(
+    "Module 'candles' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
 
   return(dg)
 }
-candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
+candles_module <- function(mktdata, txns, theme, asset_name = NULL) {
   comeca <- Sys.time()
   has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
   if (has_txns) {
     cat(" -> Trades detected.\n")
-    buys  <- txns[ txns$Txn.Qty >  0 , ]
-    sells <- txns[ txns$Txn.Qty <  0 , ]
+    buys <- txns[txns$Txn.Qty > 0, ]
+    sells <- txns[txns$Txn.Qty < 0, ]
   }
-  if (is.null(mktdata) || !xts::is.xts(mktdata)) return(NULL)
-  if(.isDI(mktdata)){
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) {
+    return(NULL)
+  }
+  if (.isDI(mktdata)) {
     cat(" -> Futures data detected (Brazilian DI).\n")
     std <- mktdata
   } else {
     std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
   }
-  if (inherits(std, "try-error") || is.null(std)) return(NULL)
+  if (inherits(std, "try-error") || is.null(std)) {
+    return(NULL)
+  }
 
-  di_flag       <- .isDI(std)
+  di_flag <- .isDI(std)
   maturity_date <- attr(std, "maturity")
-  if(!is.null(maturity_date)) cat(" -> Futures maturity date is",maturity_date,".\n")
+  if (!is.null(maturity_date)) cat(" -> Futures maturity date is", maturity_date, ".\n")
 
-  pal  <- theme$palette
+  pal <- theme$palette
   corx <- pal[1]
   cory <- pal[3]
-  cl   <- theme$colors
+  cl <- theme$colors
 
   # Candle + range selector style with safe fallbacks
   candle_cfg <- theme$candles %||% list()
-  cw    <- candle_cfg$point_width %||% 4
-  cgrp  <- candle_cfg$grouping %||% FALSE
-  cup   <- candle_cfg$up_color %||% "#00c176"
+  cw <- candle_cfg$point_width %||% 4
+  cgrp <- candle_cfg$grouping %||% FALSE
+  cup <- candle_cfg$up_color %||% "#00c176"
   cdown <- candle_cfg$down_color %||% "#ff4d4d"
   cline <- candle_cfg$line_color %||% "#cccccc"
-  clw   <- candle_cfg$line_width %||% 1
+  clw <- candle_cfg$line_width %||% 1
   cheight <- candle_cfg$height %||% 500
-  rs_txt  <- cl$range_selector_txt %||% cl$axis_txt
-  rs_fill <- cl$range_selector_bg  %||% cl$chart_bg
-  rs_stk  <- cl$range_selector_border %||% cl$axis_txt
+  rs_txt <- cl$range_selector_txt %||% cl$axis_txt
+  rs_fill <- cl$range_selector_bg %||% cl$chart_bg
+  rs_stk <- cl$range_selector_border %||% cl$axis_txt
 
-  if (has_txns && di_flag && !is.null(maturity_date)){
-    buys$Txn.Price  <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
+  if (has_txns && di_flag && !is.null(maturity_date)) {
+    buys$Txn.Price <- mapply(get_DI_price, buys$Txn.Price, index(buys), MoreArgs = list(maturity = maturity_date))
     sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells), MoreArgs = list(maturity = maturity_date))
-     }
+  }
   if (has_txns) {
-    if (di_flag){ tmp <- buys; buys <- sells; sells <- tmp }
-    buys_data <- lapply(seq_len(nrow(buys)), function(i){ list(x = as.numeric(index(buys)[i]) * 1000,  y = as.numeric(buys$Txn.Price[i]),  z = as.numeric(buys$Txn.Qty[i])) })
-    sells_data <- lapply(seq_len(nrow(sells)), function(i){ list(x = as.numeric(index(sells)[i]) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i])) })
+    if (di_flag) {
+      tmp <- buys
+      buys <- sells
+      sells <- tmp
+    }
+    buys_data <- lapply(seq_len(nrow(buys)), function(i) {
+      list(x = as.numeric(index(buys)[i]) * 1000, y = as.numeric(buys$Txn.Price[i]), z = as.numeric(buys$Txn.Qty[i]))
+    })
+    sells_data <- lapply(seq_len(nrow(sells)), function(i) {
+      list(x = as.numeric(index(sells)[i]) * 1000, y = as.numeric(sells$Txn.Price[i]), z = as.numeric(sells$Txn.Qty[i]))
+    })
   }
 
   # robust date->ms conversion (handles Date and POSIXct)
-  ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
+  ix_to_ms <- function(ix) {
+    if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC")) * 1000 else as.numeric(ix) * 1000
+  }
   idx_ms <- ix_to_ms(index(std))
-  ohlc_data <- lapply(seq_len(nrow(std)), function(i){ list(x = idx_ms[i], open = as.numeric(std$Open[i]), high = as.numeric(std$High[i]), low = as.numeric(std$Low[i]), close = as.numeric(std$Close[i])) })
+  ohlc_data <- lapply(seq_len(nrow(std)), function(i) {
+    list(x = idx_ms[i], open = as.numeric(std$Open[i]), high = as.numeric(std$High[i]), low = as.numeric(std$Low[i]), close = as.numeric(std$Close[i]))
+  })
 
   abrev3 <- JS("function () { var raw=this.value+''; var hasPerc=raw.indexOf('%')!==-1; if(hasPerc) raw=raw.replace('%',''); var v=parseFloat(raw); if(isNaN(v)) return this.value; var neg=v<0?'-':''; v=Math.abs(v); var txt; if(v>=1e6){ txt=(v/1e6).toFixed(v>=1e7?0:1)+'M'; } else if(v>=1e3){ txt=(v/1e3).toFixed(v>=1e4?0:1)+'k'; } else if(v>=100){ txt=v.toFixed(0);} else { txt=v.toFixed(2);} return neg+txt+(hasPerc?'%':''); }")
 
@@ -567,23 +630,31 @@ candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
       )
     ) %>%
     highcharter::hc_boost(enabled = TRUE, useGPUTranslations = TRUE, usePreAllocated = TRUE) %>%
-    hc_add_yAxis(id = "price", startOnTick = FALSE, endOnTick = FALSE,
-                 title = list(text = "Price", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
-                 labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
-                 relative = 1, opposite = FALSE)
+    hc_add_yAxis(
+      id = "price", startOnTick = FALSE, endOnTick = FALSE,
+      title = list(text = "Price", style = list(color = cl$title_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$title, "px"), fontWeight = "bold")),
+      labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
+      relative = 1, opposite = FALSE
+    )
 
   # Add candlestick series with pre-evaluated style to avoid NSE scoping issues
   ohlc_style <- list(upColor = cup, color = cdown, lineColor = cline, lineWidth = clw, pointWidth = cw)
   series_name <- if (!is.null(asset_name) && is.character(asset_name) && length(asset_name) == 1 && nzchar(asset_name)) asset_name else "Asset"
-  hc <- do.call(highcharter::hc_add_series,
-                c(list(hc = hc, data = ohlc_data, type = "candlestick", name = series_name, yAxis = "price"),
-                  ohlc_style)) %>%
+  hc <- do.call(
+    highcharter::hc_add_series,
+    c(
+      list(hc = hc, data = ohlc_data, type = "candlestick", name = series_name, yAxis = "price"),
+      ohlc_style
+    )
+  ) %>%
     hc_plotOptions(candlestick = list(dataGrouping = list(enabled = cgrp)), series = list(dataGrouping = list(enabled = FALSE))) %>%
-    hc_xAxis(type = "datetime",
-             ordinal = FALSE,
-             minPadding = 0, maxPadding = 0,
-             labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
-             events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume')||chart.options.chart.renderTo.includes('position'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))) %>%
+    hc_xAxis(
+      type = "datetime",
+      ordinal = FALSE,
+      minPadding = 0, maxPadding = 0,
+      labels = list(style = list(color = cl$axis_txt, fontFamily = theme$font_family, fontSize = paste0(theme$font_sizes$axis, "px"), fontWeight = "bold")),
+      events = list(afterSetExtremes = JS("function(e){ var thisChart=this.chart; if(e.trigger!=='syncExtremes'){ Highcharts.each(Highcharts.charts,function(chart){ if(chart && chart!==thisChart && chart.options.chart.renderTo && (chart.options.chart.renderTo.includes('cumret')||chart.options.chart.renderTo.includes('rolling')||chart.options.chart.renderTo.includes('period')||chart.options.chart.renderTo.includes('drawdown')||chart.options.chart.renderTo.includes('volume')||chart.options.chart.renderTo.includes('position'))){ if(chart.xAxis[0].setExtremes){ chart.xAxis[0].setExtremes(e.min,e.max,undefined,false,{trigger:'syncExtremes'}); } } }); }}"))
+    ) %>%
     hc_rangeSelector(
       enabled = TRUE,
       allButtonsEnabled = TRUE,
@@ -594,7 +665,7 @@ candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
       ),
       buttonTheme = list(
         style = list(color = rs_txt),
-        fill  = rs_fill,
+        fill = rs_fill,
         stroke = rs_stk,
         states = list(
           hover  = list(fill = rs_fill, style = list(color = rs_txt)),
@@ -612,19 +683,282 @@ candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
 
   if (has_txns) {
     hc <- hc %>%
-      hc_add_series(data = buys_data, yAxis = "price", type = "scatter", name = "Buys", color = corx,
-                    marker = list(enabled = TRUE, symbol = "triangle", radius = 5, fillColor = corx, lineColor = corx, lineWidth = 2),
-                    tooltip = list(headerFormat = "", pointFormat = "Buy<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
-                    boostThreshold = 1) %>%
-      hc_add_series(data = sells_data, yAxis = "price", type = "scatter", name = "Sells", color = cory,
-                    marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5, fillColor = cory, lineColor = cory, lineWidth = 1),
-                    tooltip = list(headerFormat = "", pointFormat = "Sell<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
-                    boostThreshold = 1)
+      hc_add_series(
+        data = buys_data, yAxis = "price", type = "scatter", name = "Buys", color = corx,
+        marker = list(enabled = TRUE, symbol = "triangle", radius = 5, fillColor = corx, lineColor = corx, lineWidth = 2),
+        tooltip = list(headerFormat = "", pointFormat = "Buy<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
+        boostThreshold = 1
+      ) %>%
+      hc_add_series(
+        data = sells_data, yAxis = "price", type = "scatter", name = "Sells", color = cory,
+        marker = list(enabled = TRUE, symbol = "triangle-down", radius = 5, fillColor = cory, lineColor = cory, lineWidth = 1),
+        tooltip = list(headerFormat = "", pointFormat = "Sell<br>Date: {point.x:%Y-%m-%d %H:%M}<br>Price: {point.y:.2f}<br>Quantity: {point.z:.2f}"), showInLegend = TRUE,
+        boostThreshold = 1
+      )
   }
 
   termina <- Sys.time()
-  message(sprintf("Module 'candles' rendered in %.2f seconds.", as.numeric(difftime(termina, comeca, units = 'secs'))))
+  message(sprintf("Module 'candles' rendered in %.2f seconds.", as.numeric(difftime(termina, comeca, units = "secs"))))
   hc
+}
+candles_module_ec <- function(mktdata, txns, theme, asset_name = NULL) {
+  comeca <- Sys.time()
+
+  # Initial validations
+  has_txns <- !is.null(txns) && xts::is.xts(txns) && nrow(txns) > 0
+  if (has_txns) {
+    cat(" -> Trades detected.\n")
+    buys <- txns[txns$Txn.Qty > 0, ]
+    sells <- txns[txns$Txn.Qty < 0, ]
+  }
+
+  if (is.null(mktdata) || !xts::is.xts(mktdata)) {
+    return(NULL)
+  }
+
+  if (.isDI(mktdata)) {
+    cat(" -> Futures data detected (Brazilian DI).\n")
+    std <- mktdata
+  } else {
+    std <- try(.to_ohlc_standard(mktdata), silent = TRUE)
+  }
+
+  if (inherits(std, "try-error") || is.null(std)) {
+    return(NULL)
+  }
+
+  di_flag <- .isDI(std)
+  maturity_date <- attr(std, "maturity")
+  if (!is.null(maturity_date)) cat(" -> Futures maturity date is", maturity_date, ".\n")
+
+  # Theme colors and config
+  pal <- theme$palette
+  corx <- pal[1] # Buy color
+  cory <- pal[5] # Sell color
+  cl <- theme$colors
+
+  # Candle config with safe fallbacks
+  candle_cfg <- theme$candles %||% list()
+  cheight <- candle_cfg$height %||% 500
+  cup <- candle_cfg$up_color %||% "#00c176"
+  cdown <- candle_cfg$down_color %||% "#ff4d4d"
+
+  # Font configuration
+  font_family <- theme$font_family %||% "Arial"
+  font_size_axis <- theme$font_sizes$axis %||% 12
+  font_size_title <- theme$font_sizes$title %||% 14
+
+  # Timezone
+  tzone(std) <- "America/Sao_Paulo"
+
+  # Adjust trade prices if DI futures
+  if (has_txns && di_flag && !is.null(maturity_date)) {
+    if (nrow(buys) > 0) {
+      buys$Txn.Price <- mapply(get_DI_price, buys$Txn.Price, index(buys),
+        MoreArgs = list(maturity = maturity_date)
+      )
+    }
+    if (nrow(sells) > 0) {
+      sells$Txn.Price <- mapply(get_DI_price, sells$Txn.Price, index(sells),
+        MoreArgs = list(maturity = maturity_date)
+      )
+    }
+  }
+
+  # For DI, invert buy/sell
+  if (has_txns && di_flag) {
+    tmp <- buys
+    buys <- sells
+    sells <- tmp
+  }
+
+  # Check for Donchian channels
+  has_donchian <- FALSE
+  donchian_upper <- NULL
+  donchian_lower <- NULL
+
+  col_names <- colnames(std)
+  x_cols <- grep("^X", col_names, value = TRUE)
+  y_cols <- grep("^Y", col_names, value = TRUE)
+
+  if (length(x_cols) > 0 && length(y_cols) > 0) {
+    has_donchian <- TRUE
+    donchian_upper <- std[, x_cols[1]]
+    donchian_lower <- std[, y_cols[1]]
+    cat(" -> Donchian channels detected.\n")
+  }
+
+  # Prepare main data frame
+  df <- data.frame(
+    Date = index(std),
+    Open = as.numeric(std[, 1]),
+    Close = as.numeric(std[, 4]),
+    Low = as.numeric(std[, 3]),
+    High = as.numeric(std[, 2]),
+    stringsAsFactors = FALSE
+  )
+
+  # Add Donchian if present
+  if (has_donchian) {
+    df$Donchian_Upper <- as.numeric(donchian_upper)
+    df$Donchian_Lower <- as.numeric(donchian_lower)
+  }
+
+  # Add buy/sell signals to main dataframe
+  has_buys <- has_txns && nrow(buys) > 0
+  has_sells <- has_txns && nrow(sells) > 0
+
+  if (has_buys) {
+    df$Buys <- NA_real_
+    for (i in seq_len(nrow(buys))) {
+      buy_time <- index(buys)[i]
+      closest_idx <- which.min(abs(df$Date - buy_time))
+      if (length(closest_idx) > 0) {
+        df$Buys[closest_idx] <- as.numeric(buys$Txn.Price[i])
+      }
+    }
+  }
+
+  if (has_sells) {
+    df$Sells <- NA_real_
+    for (i in seq_len(nrow(sells))) {
+      sell_time <- index(sells)[i]
+      closest_idx <- which.min(abs(df$Date - sell_time))
+      if (length(closest_idx) > 0) {
+        df$Sells[closest_idx] <- as.numeric(sells$Txn.Price[i])
+      }
+    }
+  }
+
+  # Create base candlestick chart
+  library(echarts4r)
+  coisa <<- df
+  ec <- df %>%
+    e_charts(Date) %>%
+    e_candle(Open, Close, Low, High, name = asset_name %||% "Asset") %>%
+    e_datazoom(
+      type = "slider",
+      start = 0,
+      end = 100,
+      backgroundColor = cl$range_selector_bg %||% "#f0f0f0",
+      borderColor = cl$range_selector_border %||% "#ccc",
+      dataBackground = list(
+        lineStyle = list(color = cl$axis_txt %||% "#666"),
+        areaStyle = list(color = cl$range_selector_bg %||% "#f0f0f0")
+      ),
+      textStyle = list(
+        color = cl$range_selector_txt %||% cl$axis_txt %||% "#666",
+        fontFamily = font_family,
+        fontSize = font_size_axis
+      )
+    ) %>%
+    e_tooltip(
+      trigger = "axis",
+      axisPointer = list(type = "cross"),
+      backgroundColor = cl$chart_bg %||% "#fff",
+      borderColor = cl$axis_txt %||% "#666",
+      textStyle = list(
+        color = cl$legend_txt %||% "#333",
+        fontFamily = font_family,
+        fontSize = font_size_axis
+      )
+    ) %>%
+    e_grid(
+      left = "10%",
+      right = "10%",
+      bottom = 80
+    ) %>%
+    e_x_axis(
+      type = "time",
+      axisLabel = list(
+        color = cl$axis_txt %||% "#666",
+        fontFamily = font_family,
+        fontSize = font_size_axis,
+        fontWeight = "bold"
+      )
+    ) %>%
+    e_y_axis(
+      name = asset_name %||% "",
+      nameTextStyle = list(
+        color = cl$title_txt %||% "#333",
+        fontFamily = font_family,
+        fontSize = font_size_title,
+        fontWeight = "bold"
+      ),
+      axisLabel = list(
+        formatter = htmlwidgets::JS("function(value) { return value.toFixed(2); }"),
+        color = cl$axis_txt %||% "#666",
+        fontFamily = font_family,
+        fontSize = font_size_axis,
+        fontWeight = "bold"
+      ),
+      scale = FALSE
+    ) %>%
+    e_legend(
+      top = 1,
+      textStyle = list(
+        color = cl$legend_txt %||% "#333",
+        fontFamily = font_family,
+        fontSize = font_size_axis,
+        fontWeight = "bold"
+      )
+    ) %>%
+    e_color(c(cup, cdown))
+
+  # Add Donchian channels if present
+  if (has_donchian) {
+    ec <- ec %>%
+      e_line(Donchian_Upper,
+        name = "Donchian Upper",
+        symbol = "none",
+        lineStyle = list(
+          color = pal[2],
+          width = 1.5,
+          type = "dashed"
+        )
+      ) %>%
+      e_line(Donchian_Lower,
+        name = "Donchian Lower",
+        symbol = "none",
+        lineStyle = list(
+          color = pal[3],
+          width = 1.5,
+          type = "dashed"
+        )
+      )
+  }
+
+  # Add buy signals if present
+  if (has_buys) {
+    ec <- ec %>%
+      e_scatter(
+        serie = Buys,
+        name = "Buys",
+        symbol = "triangle",
+        symbolSize = 10,
+        itemStyle = list(color = corx)
+      )
+  }
+
+  # Add sell signals if present
+  if (has_sells) {
+    ec <- ec %>%
+      e_scatter(
+        serie = Sells,
+        name = "Sells",
+        symbol = "pin",
+        symbolSize = 10,
+        itemStyle = list(color = cory)
+      )
+  }
+
+  termina <- Sys.time()
+  message(sprintf(
+    "Module 'candles' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
+
+  return(ec)
 }
 
 #' Renders the Position Chart Module
@@ -637,23 +971,30 @@ candles_module_hc <- function(mktdata, txns, theme, asset_name = NULL){
 position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
 
-  if (is.null(mktdata) || is.null(txns) || nrow(txns) == 0)
+  if (is.null(mktdata) || is.null(txns) || nrow(txns) == 0) {
     return(NULL)
+  }
 
   # Drop known dummy initialization row (e.g., 1950-01-01 with zero qty/value)
-  txns <- try({
-    tx <- txns
-    if (NROW(tx) > 0) {
-      # remove leading rows with zero quantity and very early dates (before 1970)
-      idx <- index(tx)
-      tz0 <- attr(idx, "tzone"); if (is.null(tz0) || !nzchar(tz0)) tz0 <- "UTC"
-      cutoff <- as.POSIXct("1970-01-01 00:00:00", tz = tz0)
-      keep <- (idx >= cutoff) | (abs(suppressWarnings(as.numeric(tx$Txn.Qty))) > 0)
-      if (any(!keep)) tx <- tx[keep]
-    }
-    tx
-  }, silent = TRUE)
-  if (inherits(txns, "try-error") || is.null(txns) || NROW(txns) == 0) return(NULL)
+  txns <- try(
+    {
+      tx <- txns
+      if (NROW(tx) > 0) {
+        # remove leading rows with zero quantity and very early dates (before 1970)
+        idx <- index(tx)
+        tz0 <- attr(idx, "tzone")
+        if (is.null(tz0) || !nzchar(tz0)) tz0 <- "UTC"
+        cutoff <- as.POSIXct("1970-01-01 00:00:00", tz = tz0)
+        keep <- (idx >= cutoff) | (abs(suppressWarnings(as.numeric(tx$Txn.Qty))) > 0)
+        if (any(!keep)) tx <- tx[keep]
+      }
+      tx
+    },
+    silent = TRUE
+  )
+  if (inherits(txns, "try-error") || is.null(txns) || NROW(txns) == 0) {
+    return(NULL)
+  }
 
   # Prefer Pos.Qty (blotter) if available; otherwise compute cumsum(Txn.Qty)
   pos_tx <- NULL
@@ -665,7 +1006,9 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   }
   if (is.null(pos_tx)) {
     qty <- tryCatch(as.numeric(txns$Txn.Qty), error = function(e) NULL)
-    if (is.null(qty)) return(NULL)
+    if (is.null(qty)) {
+      return(NULL)
+    }
     tx_times <- index(txns)
     cumv <- cumsum(qty)
     df_tx <- data.frame(t = tx_times, cum = cumv)
@@ -683,10 +1026,17 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
   pos <- pos[, ncol(pos), drop = FALSE]
   colnames(pos) <- "Pos.Qty"
   # Align display timezone with mktdata (for identical tooltips/labels)
-  try({ attr(index(pos), "tzone") <- attr(index(mktdata), "tzone") }, silent = TRUE)
+  try(
+    {
+      attr(index(pos), "tzone") <- attr(index(mktdata), "tzone")
+    },
+    silent = TRUE
+  )
 
   # Prepare data for chart
-  ix_to_ms <- function(ix){ if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC"))*1000 else as.numeric(ix)*1000 }
+  ix_to_ms <- function(ix) {
+    if (inherits(ix, "Date")) as.numeric(as.POSIXct(ix, tz = "UTC")) * 1000 else as.numeric(ix) * 1000
+  }
   pos_data <- highcharter::list_parse2(
     data.frame(
       x = ix_to_ms(index(pos)),
@@ -694,10 +1044,10 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
     )
   )
 
-  pal   <- theme$palette
+  pal <- theme$palette
   zones <- list(
     list(value = 0, color = pal[3]),
-    list(color      = pal[1])
+    list(color = pal[1])
   )
   hei <- theme$position$height
 
@@ -705,45 +1055,46 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
     hc_size(height = hei) %>%
     highcharter::hc_boost(enabled = TRUE, useGPUTranslations = TRUE, usePreAllocated = TRUE) %>%
     hc_chart(
-      spacing         = theme$hc_spacing,
-      margin          = theme$hc_margin,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
       backgroundColor = theme$colors$chart_bg,
-      renderTo        = if (sync_with_candles) "position-chart" else NULL,
+      renderTo = if (sync_with_candles) "position-chart" else NULL,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift"
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift"
     ) %>%
     hc_xAxis(type = "datetime", lineWidth = 0, tickLength = 0, labels = list(enabled = FALSE)) %>%
-    hc_yAxis(startOnTick = FALSE,
-             endOnTick = FALSE,
-             title  = list(
-               text  = "Position",
-               style = list(
-                 color      = theme$colors$title_txt,
-                 fontFamily = theme$font_family,
-                 fontSize   = paste0(theme$font_sizes$title, "px"),
-                 fontWeight = "bold"
-               )
-             ),
-             labels = list(
-               style = list(
-                 color      = theme$colors$axis_txt,
-                 fontFamily = theme$font_family,
-                 fontSize   = paste0(theme$font_sizes$axis, "px"),
-                 fontWeight = "bold"
-               )
-             )
+    hc_yAxis(
+      startOnTick = FALSE,
+      endOnTick = FALSE,
+      title = list(
+        text = "Position",
+        style = list(
+          color      = theme$colors$title_txt,
+          fontFamily = theme$font_family,
+          fontSize   = paste0(theme$font_sizes$title, "px"),
+          fontWeight = "bold"
+        )
+      ),
+      labels = list(
+        style = list(
+          color      = theme$colors$axis_txt,
+          fontFamily = theme$font_family,
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
+          fontWeight = "bold"
+        )
+      )
     ) %>%
     hc_plotOptions(series = list(dataGrouping = list(enabled = FALSE))) %>%
     hc_add_series(
-      data         = pos_data,
-      type         = "column",
-      name         = "Position",
+      data = pos_data,
+      type = "column",
+      name = "Position",
       colorByPoint = FALSE,
-      zones        = zones,
+      zones = zones,
       pointPadding = 0,
       groupPadding = 0,
-      borderWidth  = 0,
+      borderWidth = 0,
       showInLegend = FALSE,
       boostThreshold = 1
     ) %>%
@@ -836,18 +1187,20 @@ position_module <- function(mktdata, txns, theme, sync_with_candles = FALSE) {
 #' @param sync_with_candles Logical, whether to sync with the candlestick chart.
 #' @return A highchart object.
 #' @keywords internal
-cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALSE, sync_with_candles=FALSE){
+cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts = FALSE, sync_with_candles = FALSE) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; hei <- theme$cumret$height
+  pal <- theme$palette
+  cl <- theme$colors
+  hei <- theme$cumret$height
   hc <- highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
-      margin  = c(theme$hc_margin[1],theme$hc_margin[2],theme$hc_margin[3]+45, theme$hc_margin[4]),
+      margin = c(theme$hc_margin[1], theme$hc_margin[2], theme$hc_margin[3] + 45, theme$hc_margin[4]),
       backgroundColor = cl$chart_bg,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift"
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift"
     ) %>%
     hc_xAxis(
       type = "datetime",
@@ -855,7 +1208,7 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
         style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
           fontWeight = "bold"
         )
       )
@@ -868,44 +1221,44 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
         style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$title,"px"),
+          fontSize   = paste0(theme$font_sizes$title, "px"),
           fontWeight = "bold"
         )
       ),
       labels = list(
-        format= "{value}%",
+        format = "{value}%",
         style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
           fontWeight = "bold"
         )
       ),
-      min = min(ret_cum, na.rm=TRUE),
-      max = max(ret_cum, na.rm=TRUE)
+      min = min(ret_cum, na.rm = TRUE),
+      max = max(ret_cum, na.rm = TRUE)
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2,
+      valueDecimals = 2,
       xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(
-      enabled      = TRUE,
-      align        = "center",
-      verticalAlign= "bottom",
-      layout       = "horizontal",
-      itemStyle    = list(
+      enabled = TRUE,
+      align = "center",
+      verticalAlign = "bottom",
+      layout = "horizontal",
+      itemStyle = list(
         color      = cl$legend_txt,
         fontFamily = theme$font_family,
-        fontSize   = paste0(theme$font_sizes$legend,"px"),
+        fontSize   = paste0(theme$font_sizes$legend, "px"),
         fontWeight = "bold"
       )
     )
 
-  if(sync_with_candles) {
+  if (sync_with_candles) {
     hc <- hc %>% hc_chart(
       spacing = theme$hc_spacing,
-      margin  = c(theme$hc_margin[1],theme$hc_margin[2],theme$hc_margin[3]+45, theme$hc_margin[4]),
+      margin = c(theme$hc_margin[1], theme$hc_margin[2], theme$hc_margin[3] + 45, theme$hc_margin[4]),
       backgroundColor = cl$chart_bg,
       renderTo = "cumret-chart"
     )
@@ -913,16 +1266,16 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
 
   hc <- hc %>% hc_add_series(
     data = list_parse2(data.frame(x = datas, y = ret_cum[, ativo])),
-    type  = "line", name = ativo, color = pal[1], id = ativo
+    type = "line", name = ativo, color = pal[1], id = ativo
   )
-  for(i in seq_along(benchs)){
+  for (i in seq_along(benchs)) {
     hc <- hc %>% hc_add_series(
       data = list_parse2(data.frame(x = datas, y = ret_cum[, benchs[i]])),
-      type  = "line", name = benchs[i], color = pal[i+1], id = benchs[i]
+      type = "line", name = benchs[i], color = pal[i + 1], id = benchs[i]
     )
   }
   series_events <- .js_visibility_events()
-  if(link_charts){
+  if (link_charts) {
     series_events$legendItemClick <- JS(
       "function(){
          var id=this.options.id;
@@ -937,11 +1290,13 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
   }
   hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
-  message(sprintf("Module 'cumret' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'cumret' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   hc <- hc %>%
     hc_xAxis(
-      type="datetime",
+      type = "datetime",
       events = list(
         afterSetExtremes = JS(paste0(
           "function(e){\n",
@@ -973,7 +1328,7 @@ cumret_module <- function(ret_cum, datas, ativo, benchs, theme, link_charts=FALS
 #' @param sync_with_candles Logical, whether to sync with the candlestick chart.
 #' @return A highchart object.
 #' @keywords internal
-rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_candles=FALSE) {
+rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
   if (inherits(ret_cum, c("xts", "zoo"))) {
     M <- coredata(ret_cum)
@@ -985,32 +1340,34 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
     stop("ret_cum must be xts, zoo, data.frame or matrix")
   }
   colnames(M) <- colnames(ret_cum)
-  N <- 1 + M/100
-  n <- nrow(N); p <- ncol(N)
+  N <- 1 + M / 100
+  n <- nrow(N)
+  p <- ncol(N)
   # Use a dynamic window: 10% of available candles (at least 2)
   k <- max(2L, as.integer(round(n * 0.10)))
   R <- matrix(NA_real_, n, p,
-              dimnames = list(rownames(N), colnames(N)))
+    dimnames = list(rownames(N), colnames(N))
+  )
   if (n > k) {
-    R[(k+1):n, ] <- (N[(k+1):n, ,drop=FALSE] /
-                       N[1:(n-k),   ,drop=FALSE] - 1) * 100
+    R[(k + 1):n, ] <- (N[(k + 1):n, , drop = FALSE] /
+      N[1:(n - k), , drop = FALSE] - 1) * 100
   }
   # 3) paleta e cores
   hei <- theme$rollingret$height
   pal <- theme$palette
-  cl  <- theme$colors
+  cl <- theme$colors
   hc <- highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
-      spacing         = theme$hc_spacing,
-      margin          = theme$hc_margin,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
       backgroundColor = cl$chart_bg,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift"
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift"
     ) %>%
     hc_xAxis(
-      type   = "datetime",
+      type = "datetime",
       lineWidth = 0,
       tickLength = 0,
       labels = list(enabled = FALSE)
@@ -1019,7 +1376,7 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       startOnTick = FALSE,
       endOnTick = FALSE,
       title = list(
-        text  = paste0("Rolling Returns ", k, "p"),
+        text = paste0("Rolling Returns ", k, "p"),
         style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
@@ -1029,7 +1386,7 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       ),
       labels = list(
         format = "{value}%",
-        style  = list(
+        style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
           fontSize   = paste0(theme$font_sizes$axis, "px"),
@@ -1040,16 +1397,16 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
       max = max(R, na.rm = TRUE)
     ) %>%
     hc_tooltip(
-      pointFormat  = "<b>{series.name}</b>: {point.y:.2f}%<br>",
+      pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
       valueDecimals = 2,
       xDateFormat = "%Y-%m-%d"
     ) %>%
     hc_legend(enabled = FALSE)
 
-  if(sync_with_candles) {
+  if (sync_with_candles) {
     hc <- hc %>% hc_chart(
-      spacing         = theme$hc_spacing,
-      margin          = theme$hc_margin,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
       backgroundColor = cl$chart_bg,
       renderTo = "rolling-chart"
     )
@@ -1057,15 +1414,15 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
 
   # ativo principal
   hc <- hc %>% hc_add_series(
-    data  = list_parse2(data.frame(x = datas, y = R[, ativo])),
-    type  = "line", name = ativo, color = pal[1], id = ativo
+    data = list_parse2(data.frame(x = datas, y = R[, ativo])),
+    type = "line", name = ativo, color = pal[1], id = ativo
   )
   # benchmarks
   for (i in seq_along(benchs)) {
     nm <- benchs[i]
     hc <- hc %>% hc_add_series(
-      data  = list_parse2(data.frame(x = datas, y = R[, nm])),
-      type  = "line", name = nm,     color = pal[i+1], id = nm
+      data = list_parse2(data.frame(x = datas, y = R[, nm])),
+      type = "line", name = nm, color = pal[i + 1], id = nm
     )
   }
   series_events <- .js_visibility_events()
@@ -1078,7 +1435,7 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
   ))
   hc <- hc %>%
     hc_xAxis(
-      type="datetime",
+      type = "datetime",
       events = list(
         afterSetExtremes = JS(paste0(
           "function(e){\n",
@@ -1110,78 +1467,82 @@ rollingret_module <- function(ret_cum, datas, ativo, benchs, theme, sync_with_ca
 #' @param sync_with_candles Logical, whether to sync with the candlestick chart.
 #' @return A highchart object.
 #' @keywords internal
-periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_candles=FALSE){
+periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; hei <- theme$periodret$height
+  pal <- theme$palette
+  cl <- theme$colors
+  hei <- theme$periodret$height
   hc <- highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
       spacing = theme$hc_spacing,
-      margin  = theme$hc_margin,
+      margin = theme$hc_margin,
       backgroundColor = cl$chart_bg,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift"
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift"
     ) %>%
-    hc_xAxis(type="datetime",      tickLength = 0,     lineWidth = 0,labels=list(enabled=FALSE)) %>%
+    hc_xAxis(type = "datetime", tickLength = 0, lineWidth = 0, labels = list(enabled = FALSE)) %>%
     hc_yAxis(
       startOnTick = FALSE,
       endOnTick = FALSE,
       title = list(
         text = "Periodic Returns",
-        style= list(
+        style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$title,"px"),
+          fontSize   = paste0(theme$font_sizes$title, "px"),
           fontWeight = "bold"
         )
       ),
       labels = list(
-        format="{value}%",
+        format = "{value}%",
         style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
           fontWeight = "bold"
         )
       ),
-      min = min(ret_simple, na.rm=TRUE),
-      max = max(ret_simple, na.rm=TRUE)
+      min = min(ret_simple, na.rm = TRUE),
+      max = max(ret_simple, na.rm = TRUE)
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2,
+      valueDecimals = 2,
       xDateFormat = "%Y-%m-%d"
     ) %>%
-    hc_legend(enabled=FALSE)
+    hc_legend(enabled = FALSE)
 
-  if(sync_with_candles) {
+  if (sync_with_candles) {
     hc <- hc %>% hc_chart(
       spacing = theme$hc_spacing,
-      margin  = theme$hc_margin,
+      margin = theme$hc_margin,
       backgroundColor = cl$chart_bg,
       renderTo = "period-chart"
     )
   }
 
   hc <- hc %>% hc_add_series(
-    data = list_parse2(data.frame(x=datas, y=ret_simple[, ativo])),
-    type="line", name=ativo, color=pal[1], id=ativo
+    data = list_parse2(data.frame(x = datas, y = ret_simple[, ativo])),
+    type = "line", name = ativo, color = pal[1], id = ativo
   )
-  for(i in seq_along(benchs)){
+  for (i in seq_along(benchs)) {
     hc <- hc %>% hc_add_series(
-      data = list_parse2(data.frame(x=datas, y=ret_simple[, benchs[i]])),
-      type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
+      data = list_parse2(data.frame(x = datas, y = ret_simple[, benchs[i]])),
+      type = "line", name = benchs[i], color = pal[i + 1], id = benchs[i]
     )
   }
   series_events <- .js_visibility_events()
   hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
-  message(sprintf("Module 'periodret' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'periodret' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   hc <- hc %>%
     hc_xAxis(
-      type="datetime",
+      type = "datetime",
       events = list(
         afterSetExtremes = JS(paste0(
           "function(e){\n",
@@ -1213,76 +1574,80 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
 #' @param sync_with_candles Logical, whether to sync with the candlestick chart.
 #' @return A highchart object.
 #' @keywords internal
-drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles=FALSE){
+drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; hei <- theme$drawdown$height
+  pal <- theme$palette
+  cl <- theme$colors
+  hei <- theme$drawdown$height
   hc <- highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
-      spacing        = theme$hc_spacing,
-      margin         = theme$hc_margin,
-      backgroundColor= cl$chart_bg,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
+      backgroundColor = cl$chart_bg,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift"
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift"
     ) %>%
-    hc_xAxis(type="datetime",    lineWidth = 0,     tickLength = 0,   labels=list(enabled=FALSE)) %>%
+    hc_xAxis(type = "datetime", lineWidth = 0, tickLength = 0, labels = list(enabled = FALSE)) %>%
     hc_yAxis(
       title = list(
         text = "Drawdowns",
-        style= list(
+        style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$title,"px"),
+          fontSize   = paste0(theme$font_sizes$title, "px"),
           fontWeight = "bold"
         )
       ),
       labels = list(
-        format="{value}%",
+        format = "{value}%",
         style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
           fontWeight = "bold"
         )
       ),
-      min = min(drawdowns, na.rm=TRUE),
+      min = min(drawdowns, na.rm = TRUE),
       max = 0
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2,
+      valueDecimals = 2,
       xDateFormat = "%Y-%m-%d"
     ) %>%
-    hc_legend(enabled=FALSE)
+    hc_legend(enabled = FALSE)
 
-  if(sync_with_candles) {
+  if (sync_with_candles) {
     hc <- hc %>% hc_chart(
-      spacing        = theme$hc_spacing,
-      margin         = theme$hc_margin,
-      backgroundColor= cl$chart_bg,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
+      backgroundColor = cl$chart_bg,
       renderTo = "drawdown-chart"
     )
   }
 
   hc <- hc %>% hc_add_series(
-    data=list_parse2(data.frame(x=datas,y=drawdowns[, ativo])),
-    type="line", name=ativo, color=pal[1], id=ativo
+    data = list_parse2(data.frame(x = datas, y = drawdowns[, ativo])),
+    type = "line", name = ativo, color = pal[1], id = ativo
   )
-  for(i in seq_along(benchs)){
+  for (i in seq_along(benchs)) {
     hc <- hc %>% hc_add_series(
-      data=list_parse2(data.frame(x=datas,y=drawdowns[, benchs[i]])),
-      type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
+      data = list_parse2(data.frame(x = datas, y = drawdowns[, benchs[i]])),
+      type = "line", name = benchs[i], color = pal[i + 1], id = benchs[i]
     )
   }
   series_events <- .js_visibility_events(ensure_zero = TRUE)
   hc <- hc %>% hc_plotOptions(series = list(events = series_events))
   termina <- Sys.time()
-  message(sprintf("Module 'drawdown' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'drawdown' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
   hc <- hc %>%
     hc_xAxis(
-      type="datetime",
+      type = "datetime",
       events = list(
         afterSetExtremes = JS(paste0(
           "function(e){\n",
@@ -1304,19 +1669,21 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     )
   hc
 }
-drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles=FALSE){
+drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
-  pal <- theme$palette; cl <- theme$colors; hei <- theme$drawdown$height
+  pal <- theme$palette
+  cl <- theme$colors
+  hei <- theme$drawdown$height
 
   hc <- highchart() %>%
     hc_size(height = hei) %>%
     hc_chart(
-      spacing        = theme$hc_spacing,
-      margin         = theme$hc_margin,
-      backgroundColor= cl$chart_bg,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
+      backgroundColor = cl$chart_bg,
       zoomType = "x",
-      panning  = list(enabled = TRUE, type = "x"),
-      panKey   = "shift",
+      panning = list(enabled = TRUE, type = "x"),
+      panKey = "shift",
       # Draw "Drawdown" inside the plot area (bottom-left) and keep it positioned on redraw
       events = list(
         load = JS(paste0(
@@ -1348,55 +1715,55 @@ drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_wit
         )
       )
     ) %>%
-    hc_xAxis(type="datetime", lineWidth = 0, tickLength = 0, labels=list(enabled=FALSE)) %>%
+    hc_xAxis(type = "datetime", lineWidth = 0, tickLength = 0, labels = list(enabled = FALSE)) %>%
     hc_yAxis(
       # Axis title disabled; we'll render the label inside the plot with the renderer
       title = list(
-        style= list(
+        style = list(
           color      = cl$title_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$title,"px"),
+          fontSize   = paste0(theme$font_sizes$title, "px"),
           fontWeight = "bold"
         )
       ),
       # Keep Y-axis labels as they are
       labels = list(
-        format="{value}%",
+        format = "{value}%",
         style = list(
           color      = cl$axis_txt,
           fontFamily = theme$font_family,
-          fontSize   = paste0(theme$font_sizes$axis,"px"),
+          fontSize   = paste0(theme$font_sizes$axis, "px"),
           fontWeight = "bold"
         )
       ),
-      min = min(drawdowns, na.rm=TRUE),
+      min = min(drawdowns, na.rm = TRUE),
       max = 0
     ) %>%
     hc_tooltip(
       pointFormat = "<b>{series.name}</b>: {point.y:.2f}%<br>",
-      valueDecimals=2,
+      valueDecimals = 2,
       xDateFormat = "%Y-%m-%d"
     ) %>%
-    hc_legend(enabled=FALSE)
+    hc_legend(enabled = FALSE)
 
-  if(sync_with_candles) {
+  if (sync_with_candles) {
     hc <- hc %>% hc_chart(
-      spacing        = theme$hc_spacing,
-      margin         = theme$hc_margin,
-      backgroundColor= cl$chart_bg,
+      spacing = theme$hc_spacing,
+      margin = theme$hc_margin,
+      backgroundColor = cl$chart_bg,
       renderTo = "drawdown-chart"
     )
   }
 
   hc <- hc %>% hc_add_series(
-    data=list_parse2(data.frame(x=datas,y=drawdowns[, ativo])),
-    type="line", name=ativo, color=pal[1], id=ativo
+    data = list_parse2(data.frame(x = datas, y = drawdowns[, ativo])),
+    type = "line", name = ativo, color = pal[1], id = ativo
   )
 
-  for(i in seq_along(benchs)){
+  for (i in seq_along(benchs)) {
     hc <- hc %>% hc_add_series(
-      data=list_parse2(data.frame(x=datas,y=drawdowns[, benchs[i]])),
-      type="line", name=benchs[i], color=pal[i+1], id=benchs[i]
+      data = list_parse2(data.frame(x = datas, y = drawdowns[, benchs[i]])),
+      type = "line", name = benchs[i], color = pal[i + 1], id = benchs[i]
     )
   }
 
@@ -1404,12 +1771,14 @@ drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_wit
   hc <- hc %>% hc_plotOptions(series = list(events = series_events))
 
   termina <- Sys.time()
-  message(sprintf("Module 'drawdown' rendered in %.2f seconds.",
-                  as.numeric(difftime(termina, comeca, units = "secs"))))
+  message(sprintf(
+    "Module 'drawdown' rendered in %.2f seconds.",
+    as.numeric(difftime(termina, comeca, units = "secs"))
+  ))
 
   hc <- hc %>%
     hc_xAxis(
-      type="datetime",
+      type = "datetime",
       events = list(
         # Keep X-axis synchronized and dynamically set Y-axis extremes to visible range
         afterSetExtremes = JS(paste0(

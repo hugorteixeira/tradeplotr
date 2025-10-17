@@ -25,9 +25,9 @@
     # search up to 6 parent frames, then .GlobalEnv
     for (i in 1:6) {
       ev <- try(parent.frame(i), silent = TRUE)
-      if (!inherits(ev, "try-error") && is.environment(ev)) envs[[length(envs)+1]] <- ev
+      if (!inherits(ev, "try-error") && is.environment(ev)) envs[[length(envs) + 1]] <- ev
     }
-    envs[[length(envs)+1]] <- .GlobalEnv
+    envs[[length(envs) + 1]] <- .GlobalEnv
   }
   for (ev in envs) {
     if (is.environment(ev) && exists(name, envir = ev, inherits = TRUE)) {
@@ -49,9 +49,13 @@
 #' @return An xts object, or NULL on failure.
 #' @keywords internal
 .to_xts <- function(x) {
-  if (.is_xts(x)) return(x)
+  if (.is_xts(x)) {
+    return(x)
+  }
   # zoo is easy to promote
-  if (inherits(x, "zoo")) return(xts::as.xts(x))
+  if (inherits(x, "zoo")) {
+    return(xts::as.xts(x))
+  }
   # matrices/data.frames/tibbles
   if (is.matrix(x) || is.data.frame(x)) {
     df <- as.data.frame(x, stringsAsFactors = FALSE)
@@ -59,7 +63,7 @@
     idx_col <- NULL
     cn <- colnames(df)
     if (!is.null(cn)) {
-      idx_col <- which(tolower(cn) %in% c("date","data","datetime","time","index"))
+      idx_col <- which(tolower(cn) %in% c("date", "data", "datetime", "time", "index"))
       if (length(idx_col) > 0) idx_col <- idx_col[1] else idx_col <- NULL
     }
     if (!is.null(idx_col)) {
@@ -78,7 +82,9 @@
     # coerce index to POSIXct or Date
     idx_parsed <- suppressWarnings(as.POSIXct(idx, tz = "UTC"))
     if (all(is.na(idx_parsed))) idx_parsed <- suppressWarnings(as.Date(idx))
-    if (all(is.na(idx_parsed))) return(NULL)
+    if (all(is.na(idx_parsed))) {
+      return(NULL)
+    }
     # coerce numeric columns
     for (j in seq_along(df)) {
       if (!is.numeric(df[[j]])) {
@@ -88,7 +94,9 @@
     # drop all-NA columns
     keep <- vapply(df, function(col) any(!is.na(col)), logical(1))
     df <- df[, keep, drop = FALSE]
-    if (ncol(df) == 0) return(NULL)
+    if (ncol(df) == 0) {
+      return(NULL)
+    }
     # build xts and sort by index
     x_out <- xts::xts(df, order.by = idx_parsed)
     x_out <- x_out[order(index(x_out))]
@@ -102,15 +110,21 @@
 #' @return TRUE if it has OHLC columns, FALSE otherwise.
 #' @keywords internal
 .is_ohlc_xts <- function(x) {
-  if (!.is_xts(x)) return(FALSE)
+  if (!.is_xts(x)) {
+    return(FALSE)
+  }
   cols <- tolower(colnames(x))
   # Handle plain OHLC names and quantmod-style prefixed columns (e.g., TICKER.Open)
-  has_plain <- all(c("open","high","low","close") %in% cols)
-  if (has_plain) return(TRUE)
+  has_plain <- all(c("open", "high", "low", "close") %in% cols)
+  if (has_plain) {
+    return(TRUE)
+  }
   # Prefix-aware: look for ".Open", ".High", ".Low", ".Close"
-  has_pref <- all(vapply(c("\\.open$","\\.high$","\\.low$","\\.close$"),
-                        function(re) any(grepl(re, cols, ignore.case = TRUE)),
-                        logical(1)))
+  has_pref <- all(vapply(
+    c("\\.open$", "\\.high$", "\\.low$", "\\.close$"),
+    function(re) any(grepl(re, cols, ignore.case = TRUE)),
+    logical(1)
+  ))
   has_pref
 }
 
@@ -120,9 +134,11 @@
 #' @return xts with 4 (or 5 with Volume) columns or NULL if cannot map
 #' @keywords internal
 .to_ohlc_standard <- function(x) {
-  if (!.is_xts(x)) return(NULL)
+  if (!.is_xts(x)) {
+    return(NULL)
+  }
   cols <- colnames(x)
-  cl   <- tolower(cols)
+  cl <- tolower(cols)
   pick <- function(regex) {
     idx <- which(grepl(regex, cl, ignore.case = TRUE))
     if (length(idx)) idx[1] else NA_integer_
@@ -136,15 +152,17 @@
   # If full OHLC exists, just map
   if (!any(is.na(c(io, ih, il, ic)))) {
     ohlc <- x[, c(io, ih, il, ic), drop = FALSE]
-    colnames(ohlc) <- c("Open","High","Low","Close")
+    colnames(ohlc) <- c("Open", "High", "Low", "Close")
   } else {
     # Fallback: synthesize OHLC from a single price column (Close/Adjusted/first)
     base_idx <- if (!is.na(ic)) ic else if (!is.na(ia)) ia else 1L
-    if (is.na(base_idx) || base_idx < 1L || base_idx > NCOL(x)) return(NULL)
+    if (is.na(base_idx) || base_idx < 1L || base_idx > NCOL(x)) {
+      return(NULL)
+    }
     px <- x[, base_idx, drop = FALSE]
     colnames(px) <- "Close"
     ohlc <- cbind(px, px, px, px)
-    colnames(ohlc) <- c("Open","High","Low","Close")
+    colnames(ohlc) <- c("Open", "High", "Low", "Close")
   }
   if (!is.na(iv)) {
     vol <- x[, iv, drop = FALSE]
@@ -159,7 +177,9 @@
 #' @return A list with mktdata, trades, and stats, or NULL.
 #' @keywords internal
 .as_backtest <- function(obj) {
-  if (!is.list(obj)) return(NULL)
+  if (!is.list(obj)) {
+    return(NULL)
+  }
   # Normalize mktdata
   md <- NULL
   if (!is.null(obj$mktdata)) {
@@ -175,7 +195,7 @@
       df <- obj$trades
       # Try to locate time and needed columns
       cn <- tolower(colnames(df))
-      time_col <- which(cn %in% c("time","date","datetime","txn.date","timestamp"))
+      time_col <- which(cn %in% c("time", "date", "datetime", "txn.date", "timestamp"))
       if (length(time_col) > 0) {
         idx <- df[[time_col[1]]]
         df[[time_col[1]]] <- NULL
@@ -197,7 +217,9 @@
       rt <- cand_xts
     }
   }
-  if (is.null(md) && is.null(tx) && is.null(rt) && is.null(obj$stats)) return(NULL)
+  if (is.null(md) && is.null(tx) && is.null(rt) && is.null(obj$stats)) {
+    return(NULL)
+  }
   list(
     mktdata = md,
     trades  = tx,
@@ -212,21 +234,32 @@
 #' @param finit End date to subset.
 #' @return list(mktdata=xts or NULL, trades=xts or NULL, symbol=character) or NULL
 #' @keywords internal
-.quantstrat_portfolio_data <- function(name, init = NULL, finit = NULL){
-  if (is.null(name) || !is.character(name) || length(name) != 1L) return(NULL)
+.quantstrat_portfolio_data <- function(name, init = NULL, finit = NULL) {
+  if (is.null(name) || !is.character(name) || length(name) != 1L) {
+    return(NULL)
+  }
   getPortfolio <- .get_function_if_exists("getPortfolio")
-  getTxns      <- .get_function_if_exists("getTxns")
-  if (is.null(getPortfolio)) return(NULL)
+  getTxns <- .get_function_if_exists("getTxns")
+  if (is.null(getPortfolio)) {
+    return(NULL)
+  }
   pf <- tryCatch(getPortfolio(name), error = function(e) NULL)
-  if (is.null(pf) || is.null(pf$symbols)) return(NULL)
+  if (is.null(pf) || is.null(pf$symbols)) {
+    return(NULL)
+  }
   syms <- names(pf$symbols)
-  if (length(syms) == 0) return(NULL)
+  if (length(syms) == 0) {
+    return(NULL)
+  }
   # Prefer a symbol that actually has transactions
   chosen <- syms[1]
   if (!is.null(getTxns)) {
     for (s in syms) {
       tx_try <- tryCatch(getTxns(Portfolio = name, Symbol = s), error = function(e) NULL)
-      if (.is_xts(tx_try) && NROW(tx_try) > 0) { chosen <- s; break }
+      if (.is_xts(tx_try) && NROW(tx_try) > 0) {
+        chosen <- s
+        break
+      }
     }
   }
   # Get transactions: prefer portfolio-stored txn (has Pos.Qty), fallback to getTxns()
@@ -285,7 +318,9 @@
 #' @return The subsetted xts object.
 #' @keywords internal
 .subset_xts <- function(x, init, finit) {
-  if (!.is_xts(x)) return(x)
+  if (!.is_xts(x)) {
+    return(x)
+  }
   rng <- paste0(as.Date(init), "/", as.Date(finit))
   tryCatch(x[rng], error = function(e) x)
 }
@@ -298,7 +333,9 @@
 #' @keywords internal
 .find_series_in_env <- function(symbols, init, finit) {
   out <- list()
-  if (is.null(symbols) || length(symbols) == 0) return(out)
+  if (is.null(symbols) || length(symbols) == 0) {
+    return(out)
+  }
   idxs <- seq_along(symbols)
   for (i in idxs) {
     nm <- symbols[[i]]
@@ -333,7 +370,7 @@
   out
 }
 
-#' Normalize the volatility of a returns series to a target annualized risk (%).
+#' Normalize the volatility of a returns series to a target annualized risk in percent.
 #' @keywords internal
 .normalize_risk <- function(xts, risk = 10, type = c("Discrete", "Log")) {
   if (!requireNamespace("xts", quietly = TRUE)) {
@@ -343,7 +380,9 @@
   type <- match.arg(type)
 
   find_returns_in_xts <- function(x) {
-    if (!xts::is.xts(x)) return(list(log = NULL, discrete = NULL))
+    if (!xts::is.xts(x)) {
+      return(list(log = NULL, discrete = NULL))
+    }
     cn <- colnames(x) %||% character(0)
     lc <- tolower(cn)
     log_idx <- which(lc == "log")
@@ -355,7 +394,9 @@
   }
 
   search_returns <- function(obj, depth = 0, max_depth = 4) {
-    if (depth > max_depth) return(NULL)
+    if (depth > max_depth) {
+      return(NULL)
+    }
     if (xts::is.xts(obj)) {
       fr <- find_returns_in_xts(obj)
       if (!is.null(fr$log) || !is.null(fr$discrete)) {
@@ -364,7 +405,9 @@
       ra <- attr(obj, "rets")
       if (!is.null(ra)) {
         res <- search_returns(ra, depth + 1, max_depth)
-        if (!is.null(res)) return(res)
+        if (!is.null(res)) {
+          return(res)
+        }
       }
       if (NCOL(obj) == 1) {
         colnames(obj) <- "Discrete"
@@ -377,18 +420,24 @@
       if (!is.null(nm) && "rets" %in% tolower(nm)) {
         rets_name <- nm[match("rets", tolower(nm))]
         res <- search_returns(obj[[rets_name]], depth + 1, max_depth)
-        if (!is.null(res)) return(res)
+        if (!is.null(res)) {
+          return(res)
+        }
       }
       for (i in seq_along(obj)) {
         res <- search_returns(obj[[i]], depth + 1, max_depth)
-        if (!is.null(res)) return(res)
+        if (!is.null(res)) {
+          return(res)
+        }
       }
       return(NULL)
     }
     ra <- attr(obj, "rets")
     if (!is.null(ra)) {
       res <- search_returns(ra, depth + 1, max_depth)
-      if (!is.null(res)) return(res)
+      if (!is.null(res)) {
+        return(res)
+      }
     }
     NULL
   }
@@ -396,7 +445,9 @@
   periods_per_year <- function(x) {
     if (!xts::is.xts(x)) stop("periods_per_year requires an xts object.")
     idx <- index(x)
-    if (length(idx) < 2) return(NA_real_)
+    if (length(idx) < 2) {
+      return(NA_real_)
+    }
     p <- tryCatch(xts::periodicity(x)$scale, error = function(e) NA_character_)
     if (!is.na(p)) {
       p <- tolower(p)
@@ -415,7 +466,9 @@
       }
     }
     dt <- stats::median(diff(as.numeric(idx)))
-    if (is.na(dt) || dt <= 0) return(NA_real_)
+    if (is.na(dt) || dt <= 0) {
+      return(NA_real_)
+    }
     if (inherits(idx, "Date")) {
       secs_per_period <- dt * 86400
     } else {
@@ -427,7 +480,9 @@
   annualized_vol <- function(r, ppy) {
     rnum <- as.numeric(r)
     rnum <- rnum[is.finite(rnum)]
-    if (length(rnum) < 2) return(NA_real_)
+    if (length(rnum) < 2) {
+      return(NA_real_)
+    }
     stats::sd(rnum) * sqrt(ppy)
   }
 
@@ -508,8 +563,10 @@
 #' @param tz_source assumed source timezone for index when deriving the Date (default 'UTC')
 #' @return xts with index set to 00:00 in tz_target for each original Date
 #' @keywords internal
-.force_midnight_tz <- function(x, tz_target = "America/Sao_Paulo", tz_source = "UTC"){
-  if (!.is_xts(x)) return(x)
+.force_midnight_tz <- function(x, tz_target = "America/Sao_Paulo", tz_source = "UTC") {
+  if (!.is_xts(x)) {
+    return(x)
+  }
   idx <- index(x)
   # If already Date-based, just coerce to POSIXct midnight in target TZ
   if (inherits(idx, "Date")) {
@@ -532,12 +589,18 @@
 #' @param tz_target timezone to force on index midnight (default 'America/Sao_Paulo')
 #' @return xts with a single column of returns, or NULL on failure
 #' @keywords internal
-.get_portfolio_returns <- function(portfolio, init, finit, tz_target = "America/Sao_Paulo"){
-  if (is.null(portfolio) || !is.character(portfolio) || length(portfolio) != 1L) return(NULL)
+.get_portfolio_returns <- function(portfolio, init, finit, tz_target = "America/Sao_Paulo") {
+  if (is.null(portfolio) || !is.character(portfolio) || length(portfolio) != 1L) {
+    return(NULL)
+  }
   PortfReturns <- .get_function_if_exists("PortfReturns")
-  if (is.null(PortfReturns)) return(NULL)
+  if (is.null(PortfReturns)) {
+    return(NULL)
+  }
   rets <- tryCatch(PortfReturns(portfolio), error = function(e) NULL)
-  if (!.is_xts(rets) || NROW(rets) == 0) return(NULL)
+  if (!.is_xts(rets) || NROW(rets) == 0) {
+    return(NULL)
+  }
   rets <- .subset_xts(rets, init, finit)
   # Coerce to single-column numeric xts if needed
   if (NCOL(rets) > 1) {
@@ -558,9 +621,11 @@
 #' @param x a named list
 #' @return same list with unique names
 #' @keywords internal
-.uniquify_names <- function(x){
+.uniquify_names <- function(x) {
   nms <- names(x)
-  if (is.null(nms)) return(x)
+  if (is.null(nms)) {
+    return(x)
+  }
   seen <- new.env(parent = emptyenv())
   new <- character(length(nms))
   for (i in seq_along(nms)) {
@@ -596,92 +661,14 @@
 #' @param mkt The xts object with market data.
 #' @return Logical.
 #' @keywords internal
-.isDI <- function(mkt){
-  if (is.null(mkt)) return(FALSE)
+.isDI <- function(mkt) {
+  if (is.null(mkt)) {
+    return(FALSE)
+  }
   cols <- tolower(colnames(mkt))
   all(c("pu_o", "tickvalue", "ticksize") %in% cols)
 }
 
-.calculate_futures_di_rates <- function(pu, maturity_date, basis_date = Sys.Date(), cal = NULL) {
-  # 0) standard calendar
-
-  if (is.null(cal)) {
-    cal <- create.calendar(
-      name      = "Brazil/ANBIMA",
-      holidays  = holidays("Brazil/ANBIMA"),
-      weekdays  = c("saturday", "sunday")
-    )
-  }
-
-  # 1) valid days
-  if (inherits(maturity_date, "Date")) {
-    n  <- bizdays(basis_date, maturity_date, cal)
-    mm <- lubridate::interval(basis_date, maturity_date) %/% months(1)
-  } else if (is.numeric(maturity_date)) {
-    n  <- as.integer(maturity_date)
-    mm <- n / 21
-  } else {
-    maturity_date <- as.Date(maturity_date)
-    n  <- bizdays(basis_date, maturity_date, cal)
-    mm <- lubridate::interval(basis_date, maturity_date) %/% months(1)
-  }
-
-  # 2) tick-size
-  tick_size <- if      (mm <=  3) 0.001
-  else if (mm <= 60) 0.005
-  else               0.010
-
-  pu <- as.numeric(pu)
-
-  rates <- 100 * ( (1e5 / pu)^(252 / n) - 1 )
-
-  deriv       <- (n/252) * 1e5/100 * (1 + rates/100)^(-(n/252) - 1)
-  tick_value  <- deriv * tick_size
-
-  # 5) return
-  return(list(
-    valid_days  = n,
-    rates        = round(as.numeric(rates),3),
-    tick_size   = tick_size,
-    tick_value  = round(as.numeric(tick_value),3)
-  ))
-}
-.calculate_futures_di_notional <- function(rates, maturity_date, basis_date = Sys.Date(), cal = NULL) {
-  if (is.null(cal)) {
-    cal <- create.calendar(
-      name      = "Brazil/ANBIMA",
-      holidays  = holidays("Brazil/ANBIMA"),
-      weekdays  = c("saturday", "sunday")
-    )
-  }
-  # 1) n of valid days
-  if (inherits(maturity_date, "Date")) {
-    n  <- bizdays(basis_date, maturity_date, cal)
-    mm <- interval(basis_date, maturity_date) %/% months(1)
-  } else if (is.numeric(maturity_date)) {
-    n  <- as.integer(maturity_date)
-    mm <- n / 21
-  } else {
-    stop("'maturity_date' has to be a number of days or Date.")
-  }
-  # 2) calculate di rates
-  tick_size <- if      (mm <=  3) 0.001
-  else if (mm <= 60) 0.005
-  else               0.010
-  # 3) PU
-  pu <- 1e5 / (1 + rates/100)^(n/252)
-  # 4) tick-value
-  deriv <- (n/252) * 1e5/100 * (1 + rates/100)^(-(n/252) - 1)
-  tick_value <- deriv * tick_size
-  # 5) return
-  return(list(
-    valid_days  = n,
-    pu          = as.numeric(pu),
-    tick_size   = tick_size,
-    tick_value  = as.numeric(tick_value)
-  ))
-}
-# Helper: tick-size by regime (pre- vs post-change)
 .get_di_tick_size <- function(mm, basis_date, rule_change_date = as.Date("2025-08-01")) {
   basis_date <- as.Date(basis_date)
   if (basis_date < rule_change_date) {
@@ -694,11 +681,11 @@
 }
 
 .calculate_futures_di_rates <- function(
-    pu,
-    maturity_date,
-    basis_date = Sys.Date(),
-    cal = NULL,
-    rule_change_date = as.Date("2025-08-01")
+  pu,
+  maturity_date,
+  basis_date = Sys.Date(),
+  cal = NULL,
+  rule_change_date = as.Date("2025-08-01")
 ) {
   # 0) Calendar
   if (is.null(cal)) {
@@ -713,18 +700,18 @@
   # 1) Business days (n) and months to maturity (mm)
   if (inherits(maturity_date, "Date")) {
     md <- maturity_date
-    n  <- bizdays::bizdays(basis_date, md, cal)
+    n <- bizdays::bizdays(basis_date, md, cal)
     mm <- lubridate::interval(basis_date, md) %/% lubridate::months(1)
   } else if (is.numeric(maturity_date)) {
     md <- NULL
-    n  <- as.integer(maturity_date)
+    n <- as.integer(maturity_date)
     mm <- n / 21
   } else {
     md <- try(as.Date(maturity_date), silent = TRUE)
     if (inherits(md, "try-error") || is.na(md)) {
       stop("'maturity_date' must be Date, a number of business days, or coercible to Date.")
     }
-    n  <- bizdays::bizdays(basis_date, md, cal)
+    n <- bizdays::bizdays(basis_date, md, cal)
     mm <- lubridate::interval(basis_date, md) %/% months(1)
   }
 
@@ -737,28 +724,28 @@
   pu <- as.numeric(pu)
   if (any(!is.finite(pu) | pu <= 0)) stop("'pu' must be positive and finite.")
 
-  rates <- 100 * ((1e5 / pu)^(252 / n) - 1)  # percent
+  rates <- 100 * ((1e5 / pu)^(252 / n) - 1) # percent
 
   # 4) Tick-value (magnitude), using dPU/d(rate in percentage points)
   # dPU/d(r%) = -(n/252) * PU / (100 * (1 + r%/100))
-  deriv_pp   <- -(n/252) * pu / (100 * (1 + rates/100))
+  deriv_pp <- -(n / 252) * pu / (100 * (1 + rates / 100))
   tick_value <- abs(deriv_pp) * tick_size
 
   # 5) Return (no rounding for precision)
   list(
     valid_days = n,
-    rates      = as.numeric(rates),     # percent
-    tick_size  = tick_size,             # percent points per tick
+    rates      = as.numeric(rates), # percent
+    tick_size  = tick_size, # percent points per tick
     tick_value = as.numeric(tick_value) # PU points per tick
   )
 }
 
 .calculate_futures_di_notional <- function(
-    rates,
-    maturity_date,
-    basis_date = Sys.Date(),
-    cal = NULL,
-    rule_change_date = as.Date("2025-08-01")
+  rates,
+  maturity_date,
+  basis_date = Sys.Date(),
+  cal = NULL,
+  rule_change_date = as.Date("2025-08-01")
 ) {
   # 0) Calendar
   if (is.null(cal)) {
@@ -773,11 +760,11 @@
   # 1) Business days (n) and months to maturity (mm)
   if (inherits(maturity_date, "Date")) {
     md <- maturity_date
-    n  <- bizdays::bizdays(basis_date, md, cal)
+    n <- bizdays::bizdays(basis_date, md, cal)
     mm <- lubridate::interval(basis_date, md) %/% months(1)
   } else if (is.numeric(maturity_date)) {
     md <- NULL
-    n  <- as.integer(maturity_date)
+    n <- as.integer(maturity_date)
     mm <- n / 21
   } else {
     stop("'maturity_date' must be a number of business days or Date.")
@@ -791,17 +778,17 @@
   # 3) PU from rate
   rates <- as.numeric(rates)
   if (any(!is.finite(rates) | rates <= -100)) stop("'rates' must be finite and > -100%.")
-  pu <- 1e5 / (1 + rates/100)^(n/252)
+  pu <- 1e5 / (1 + rates / 100)^(n / 252)
 
   # 4) Tick-value (magnitude)
-  deriv_pp   <- -(n/252) * pu / (100 * (1 + rates/100))
+  deriv_pp <- -(n / 252) * pu / (100 * (1 + rates / 100))
   tick_value <- abs(deriv_pp) * tick_size
 
   # 5) Return (no rounding for precision)
   list(
     valid_days = n,
-    pu         = as.numeric(pu),        # PU
-    tick_size  = tick_size,             # percent points per tick
+    pu         = as.numeric(pu), # PU
+    tick_size  = tick_size, # percent points per tick
     tick_value = as.numeric(tick_value) # PU points per tick
   )
 }
@@ -812,24 +799,28 @@
 #' @return The numeric rate.
 #' @importFrom bizdays bizdays create.calendar holidays
 #' @keywords internal
-get_DI_price <- function(price, row_date, maturity){
+get_DI_price <- function(price, row_date, maturity) {
   res <- tryCatch(.calculate_futures_di_rates(pu = price, maturity, row_date), error = function(e) NULL)
-  if (!is.null(res) && !is.null(res$rates)) return(as.numeric(res$rates))
-# fallback: if helper not available, assume 'price' already is a numeric rate
-  #as.numeric(price)
+  if (!is.null(res) && !is.null(res$rates)) {
+    return(as.numeric(res$rates))
+  }
+  # fallback: if helper not available, assume 'price' already is a numeric rate
+  # as.numeric(price)
 }
 
 #' Converts the statistics data.frame to a JSON-ready list
 #' @param carteira_df The statistics data.frame.
 #' @return A list ready to be converted to JSON.
 #' @keywords internal
-stats_json <- function(carteira_df){
-  lapply(seq_len(nrow(carteira_df)), function(i){
-    row <- as.list(carteira_df[i, , drop=FALSE])
-    row <- lapply(row, function(x){
-      if(is.character(x) && !is.na(num <- suppressWarnings(as.numeric(x)))){
+stats_json <- function(carteira_df) {
+  lapply(seq_len(nrow(carteira_df)), function(i) {
+    row <- as.list(carteira_df[i, , drop = FALSE])
+    row <- lapply(row, function(x) {
+      if (is.character(x) && !is.na(num <- suppressWarnings(as.numeric(x)))) {
         num
-      } else x
+      } else {
+        x
+      }
     })
     names(row) <- colnames(carteira_df)
     row
@@ -841,19 +832,23 @@ stats_json <- function(carteira_df){
 #' @param datas The vector of dates in milliseconds.
 #' @return A list ready to be converted to JSON.
 #' @keywords internal
-series_json <- function(mat, datas){
+series_json <- function(mat, datas) {
   dates <- as.character(
-    as.Date(as.POSIXct(datas/1000, origin="1970-01-01"))
+    as.Date(as.POSIXct(datas / 1000, origin = "1970-01-01"))
   )
-  df    <- data.frame(Date = dates, as.data.frame(mat, stringsAsFactors=FALSE),
-                      check.names=FALSE)
-  idx   <- floor(seq(1, nrow(df), length.out=11))
-  lapply(idx, function(i){
-    row <- as.list(df[i, , drop=FALSE])
-    row <- lapply(row, function(x){
-      if(is.character(x) && !is.na(num <- suppressWarnings(as.numeric(x)))){
+  df <- data.frame(
+    Date = dates, as.data.frame(mat, stringsAsFactors = FALSE),
+    check.names = FALSE
+  )
+  idx <- floor(seq(1, nrow(df), length.out = 11))
+  lapply(idx, function(i) {
+    row <- as.list(df[i, , drop = FALSE])
+    row <- lapply(row, function(x) {
+      if (is.character(x) && !is.na(num <- suppressWarnings(as.numeric(x)))) {
         num
-      } else x
+      } else {
+        x
+      }
     })
     row
   })
@@ -863,20 +858,24 @@ series_json <- function(mat, datas){
 #' @param lista_tabs The list of returns tables.
 #' @return A list ready to be converted to JSON.
 #' @keywords internal
-rentab_json <- function(lista_tabs){
+rentab_json <- function(lista_tabs) {
   out <- list()
-  for(name in names(lista_tabs)){
+  for (name in names(lista_tabs)) {
     tab <- lista_tabs[[name]]
-    df2 <- cbind(Year = rownames(tab),
-                 as.data.frame(tab, stringsAsFactors=FALSE))
-    rows <- lapply(seq_len(nrow(df2)), function(i){
-      r <- as.list(df2[i, , drop=FALSE])
-      r <- lapply(r, function(x){
-        if(is.character(x) && grepl("%", x)){
-          as.numeric(gsub("%","", x))
-        } else if(is.character(x) && !is.na(num<-suppressWarnings(as.numeric(x)))){
+    df2 <- cbind(
+      Year = rownames(tab),
+      as.data.frame(tab, stringsAsFactors = FALSE)
+    )
+    rows <- lapply(seq_len(nrow(df2)), function(i) {
+      r <- as.list(df2[i, , drop = FALSE])
+      r <- lapply(r, function(x) {
+        if (is.character(x) && grepl("%", x)) {
+          as.numeric(gsub("%", "", x))
+        } else if (is.character(x) && !is.na(num <- suppressWarnings(as.numeric(x)))) {
           num
-        } else x
+        } else {
+          x
+        }
       })
       r
     })
@@ -898,7 +897,7 @@ fix_pkg <- function(x) {
   }
   if (is.list(x)) {
     at <- attributes(x)
-    x  <- lapply(x, fix_pkg)
+    x <- lapply(x, fix_pkg)
     attributes(x) <- at
   }
   x
@@ -909,21 +908,25 @@ fix_pkg <- function(x) {
 #' @return A single xts object with the calculated returns for all series.
 #' @keywords internal
 .data_prepare <- function(data_xts, verbose = getOption("tplot.verbose", FALSE)) {
-  vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
-  vmsg(sprintf("[.data_prepare] Input items: %d | names=%s",
-               if (is.list(data_xts)) length(data_xts) else 1L,
-               paste(if (is.list(data_xts)) names(data_xts) else "<single>", collapse=",")))
+  vmsg <- function(...) {
+    if (isTRUE(verbose)) message(...)
+  }
+  vmsg(sprintf(
+    "[.data_prepare] Input items: %d | names=%s",
+    if (is.list(data_xts)) length(data_xts) else 1L,
+    paste(if (is.list(data_xts)) names(data_xts) else "<single>", collapse = ",")
+  ))
   if (xts::is.xts(data_xts)) data_xts <- list(data_xts)
   if (is.null(names(data_xts))) names(data_xts) <- paste0("Serie", seq_along(data_xts))
 
   # Accumulate raw selected price/level columns per series,
   # then merge once to avoid edge cases with cbind on empty xts
   ativos_data <- NULL
-  cols_accum  <- list()
+  cols_accum <- list()
   col_names <- character(0)
   use_discrete <- logical(0)
-  per_scales <- character(0)   # coarse scale from xts::periodicity
-  per_labels <- character(0)   # human-friendly bar size (e.g., 1h, 4h, 1d)
+  per_scales <- character(0) # coarse scale from xts::periodicity
+  per_labels <- character(0) # human-friendly bar size (e.g., 1h, 4h, 1d)
 
   # Infer robust periodicity without calling xts::periodicity (avoid segfaults)
   .infer_period_info <- function(x_index) {
@@ -932,12 +935,16 @@ fix_pkg <- function(x) {
     if (xts::is.xts(x_index)) idx <- index(x_index)
     # Default
     out <- list(scale = "daily", label = "1d", key = 3L)
-    if (inherits(idx, "Date")) return(out)
+    if (inherits(idx, "Date")) {
+      return(out)
+    }
     # Try POSIXct
     if (inherits(idx, "POSIXct") || inherits(idx, "POSIXt")) {
       secs <- suppressWarnings(as.numeric(idx))
       d <- suppressWarnings(stats::median(diff(secs), na.rm = TRUE))
-      if (!is.finite(d) || is.na(d) || d <= 0) return(out)
+      if (!is.finite(d) || is.na(d) || d <= 0) {
+        return(out)
+      }
       # classify by step (seconds)
       min_s <- 60
       hour_s <- 3600
@@ -983,8 +990,8 @@ fix_pkg <- function(x) {
     }
 
     cols <- colnames(item)
-    idx_close    <- find_col_idx(cols, "Close")
-    idx_pu_close    <- find_col_idx(cols, "PU_c")
+    idx_close <- find_col_idx(cols, "Close")
+    idx_pu_close <- find_col_idx(cols, "PU_c")
     idx_adjusted <- find_col_idx(cols, "Adjusted")
     idx_discrete <- find_col_idx(cols, "Discrete")
 
@@ -993,20 +1000,28 @@ fix_pkg <- function(x) {
     chosen_is_discrete <- FALSE
 
     if (grepl("CDI", item_name, ignore.case = TRUE) && !is.na(idx_close)) {
-      chosen_idx <- idx_close;    chosen_msg <- "\n        Close (calculated)\n"
+      chosen_idx <- idx_close
+      chosen_msg <- "\n        Close (calculated)\n"
     } else if (grepl("IPCA", item_name, ignore.case = TRUE) && !is.na(idx_close)) {
-      chosen_idx <- idx_close;    chosen_msg <- "\n        Close (calculated)\n"
+      chosen_idx <- idx_close
+      chosen_msg <- "\n        Close (calculated)\n"
     } else if (grepl("DI1", item_name, ignore.case = TRUE) && !is.na(idx_pu_close)) {
-      chosen_idx <- idx_pu_close;    chosen_msg <- "\n        Close DI (calculated)\n"
+      chosen_idx <- idx_pu_close
+      chosen_msg <- "\n        Close DI (calculated)\n"
     } else if (!is.na(idx_adjusted)) {
-      chosen_idx <- idx_adjusted; chosen_msg <- "\n        Adjusted\n"
+      chosen_idx <- idx_adjusted
+      chosen_msg <- "\n        Adjusted\n"
     } else if (!is.na(idx_close)) {
-      chosen_idx <- idx_close;    chosen_msg <- "\n        Close\n"
+      chosen_idx <- idx_close
+      chosen_msg <- "\n        Close\n"
     } else if (!is.na(idx_discrete)) {
-      chosen_idx <- idx_discrete; chosen_msg <- "\n        Discrete (no recalc)\n"; chosen_is_discrete <- TRUE
+      chosen_idx <- idx_discrete
+      chosen_msg <- "\n        Discrete (no recalc)\n"
+      chosen_is_discrete <- TRUE
     } else if (NCOL(item) == 1) {
       # Fallback: use the single available column as price/level
-      chosen_idx <- 1L; chosen_msg <- "\n        (fallback) first row\n"
+      chosen_idx <- 1L
+      chosen_msg <- "\n        (fallback) first row\n"
     } else {
       warning(paste("No adequate row found for", item_name))
       next
@@ -1019,15 +1034,17 @@ fix_pkg <- function(x) {
     per <- inf$scale
     bar_lbl <- inf$label
 
-    vmsg(sprintf("[.data_prepare] Added column for %s | rows=%d | periodicity=%s | label=%s",
-                 item_name, NROW(discrete_col), per, bar_lbl))
+    vmsg(sprintf(
+      "[.data_prepare] Added column for %s | rows=%d | periodicity=%s | label=%s",
+      item_name, NROW(discrete_col), per, bar_lbl
+    ))
     # Ensure the selected column carries the series name now
     colnames(discrete_col) <- item_name
     cols_accum[[length(cols_accum) + 1L]] <- discrete_col
-    col_names    <- c(col_names, item_name)
+    col_names <- c(col_names, item_name)
     use_discrete <- c(use_discrete, chosen_is_discrete)
-    per_scales   <- c(per_scales, per)
-    per_labels   <- c(per_labels, bar_lbl)
+    per_scales <- c(per_scales, per)
+    per_labels <- c(per_labels, bar_lbl)
   }
 
   # Merge accumulated columns (outer join) to create a unified xts
@@ -1056,7 +1073,8 @@ fix_pkg <- function(x) {
       if (!is.na(first_non_na)) {
         ativos_data[first_non_na:NROW(ativos_data), i] <-
           ifelse(is.na(ativos_data[first_non_na:NROW(ativos_data), i]),
-                 0, ativos_data[first_non_na:NROW(ativos_data), i])
+            0, ativos_data[first_non_na:NROW(ativos_data), i]
+          )
       }
     } else {
       ativos_data[, i] <- zoo::na.locf(ativos_data[, i], na.rm = FALSE)
@@ -1095,17 +1113,17 @@ fix_pkg <- function(x) {
 
   for (i in seq_len(NCOL(ativos_data))) {
     # Extract the single-column series (preserve xts/data.frame structure)
-    x_col  <- ativos_data[, i, drop = FALSE]
+    x_col <- ativos_data[, i, drop = FALSE]
     # Flatten values to numeric vector for validation checks (ignoring index)
     x_vals <- as.numeric(x_col)
     # Finite mask to ignore NA/NaN/Inf in the checks
-    fin    <- is.finite(x_vals)
+    fin <- is.finite(x_vals)
 
     # Content checks (ignore NAs/Inf):
     # - have at least one finite value
-    have_data      <- any(fin)
+    have_data <- any(fin)
     # - all finite values are strictly positive (> 0) to avoid 1/0 issues
-    positive_ok    <- have_data && all(x_vals[fin] > 0)
+    positive_ok <- have_data && all(x_vals[fin] > 0)
     # - at least 5 digits before the decimal point for all finite values
     #   (e.g., 67890.00 => trunc(67890.00) = 67890 >= 10000)
     five_digits_ok <- have_data && all(trunc(x_vals[fin]) >= 10000)
@@ -1129,10 +1147,12 @@ fix_pkg <- function(x) {
       ativos_data_returns[, i] <- r_i
 
       # Optional log
-      vmsg(sprintf("[.data_prepare] Return.calculate(%s%s) -> rows=%d",
-                   col_names[i],
-                   if (invert_for_DI1) " [1/x]" else "",
-                   NROW(r_i)))
+      vmsg(sprintf(
+        "[.data_prepare] Return.calculate(%s%s) -> rows=%d",
+        col_names[i],
+        if (invert_for_DI1) " [1/x]" else "",
+        NROW(r_i)
+      ))
     } else {
       # Column already represents discrete returns: only set first valid to 0
       r_i <- x_col
@@ -1145,45 +1165,69 @@ fix_pkg <- function(x) {
   # Map periodicity to an ordered rank and endpoint label
   .per_key <- function(scale) {
     s <- tolower(scale %||% "unknown")
-    if (startsWith(s, "min")) return(1L)      # minute
-    if (s %in% c("hourly","hours","hour")) return(2L)
-    if (s %in% c("daily","day","days"))    return(3L)
-    if (s %in% c("weekly","week","weeks")) return(4L)
-    if (s %in% c("monthly","month","months")) return(5L)
-    if (s %in% c("quarterly","quarter","quarters")) return(6L)
-    if (s %in% c("yearly","annual","year","years")) return(7L)
+    if (startsWith(s, "min")) {
+      return(1L)
+    } # minute
+    if (s %in% c("hourly", "hours", "hour")) {
+      return(2L)
+    }
+    if (s %in% c("daily", "day", "days")) {
+      return(3L)
+    }
+    if (s %in% c("weekly", "week", "weeks")) {
+      return(4L)
+    }
+    if (s %in% c("monthly", "month", "months")) {
+      return(5L)
+    }
+    if (s %in% c("quarterly", "quarter", "quarters")) {
+      return(6L)
+    }
+    if (s %in% c("yearly", "annual", "year", "years")) {
+      return(7L)
+    }
     3L # default to daily
   }
   .on_from_key <- function(k) {
     switch(as.character(k),
-           `1` = "minutes",
-           `2` = "hours",
-           `3` = "days",
-           `4` = "weeks",
-           `5` = "months",
-           `6` = "quarters",
-           `7` = "years",
-           "days")
+      `1` = "minutes",
+      `2` = "hours",
+      `3` = "days",
+      `4` = "weeks",
+      `5` = "months",
+      `6` = "quarters",
+      `7` = "years",
+      "days"
+    )
   }
   .pretty_scale <- function(on) {
     switch(on,
-           minutes = "Minutes",
-           hours   = "Hours",
-           days    = "Daily",
-           weeks   = "Weekly",
-           months  = "Monthly",
-           quarters= "Quarterly",
-           years   = "Annual",
-           on)
+      minutes = "Minutes",
+      hours = "Hours",
+      days = "Daily",
+      weeks = "Weekly",
+      months = "Monthly",
+      quarters = "Quarterly",
+      years = "Annual",
+      on
+    )
   }
   .normalize_index <- function(x, on) {
     # Normalize index to comparable Date stamps across different sources/markets.
     # This avoids mismatches due to different times-of-day when merging.
-    if (on %in% c("days","day"))   return(as.Date(x))
-    if (on %in% c("weeks","week")) return(as.Date(x))
-    if (on %in% c("months","month")) return(as.Date(zoo::as.yearmon(x), frac = 1))
-    if (on %in% c("quarters","quarter")) return(as.Date(zoo::as.yearqtr(x), frac = 1))
-    if (on %in% c("years","year")) {
+    if (on %in% c("days", "day")) {
+      return(as.Date(x))
+    }
+    if (on %in% c("weeks", "week")) {
+      return(as.Date(x))
+    }
+    if (on %in% c("months", "month")) {
+      return(as.Date(zoo::as.yearmon(x), frac = 1))
+    }
+    if (on %in% c("quarters", "quarter")) {
+      return(as.Date(zoo::as.yearqtr(x), frac = 1))
+    }
+    if (on %in% c("years", "year")) {
       yy <- format(as.POSIXct(x), "%Y")
       return(as.Date(zoo::as.yearmon(paste0(yy, "-12")), frac = 1))
     }
@@ -1192,15 +1236,19 @@ fix_pkg <- function(x) {
 
   .agg_returns <- function(r, on) {
     # r is an xts vector of returns; aggregate by compounding within each period
-    if (is.null(r) || NROW(r) == 0) return(r)
+    if (is.null(r) || NROW(r) == 0) {
+      return(r)
+    }
     idx <- tryCatch(xts::endpoints(r, on = on), error = function(e) integer(0))
-    if (length(idx) <= 1) return(r)
+    if (length(idx) <= 1) {
+      return(r)
+    }
     out_vals <- vector("numeric", length(idx) - 1L)
-    out_idx  <- index(r)[idx[-1]]
+    out_idx <- index(r)[idx[-1]]
     for (j in seq_len(length(idx) - 1L)) {
       seg <- r[(idx[j] + 1L):idx[j + 1L], , drop = FALSE]
-      rr  <- as.numeric(seg)
-      rr  <- rr[is.finite(rr)]
+      rr <- as.numeric(seg)
+      rr <- rr[is.finite(rr)]
       out_vals[j] <- if (length(rr)) exp(sum(log1p(rr))) - 1 else NA_real_
     }
     out_idx_n <- .normalize_index(out_idx, on)
@@ -1211,17 +1259,21 @@ fix_pkg <- function(x) {
   keys <- vapply(per_scales, .per_key, integer(1))
   # coarsest = max(key); enforce minimum = 3 (days)
   target_key <- max(c(3L, keys), na.rm = TRUE)
-  target_on  <- .on_from_key(target_key)
+  target_on <- .on_from_key(target_key)
 
   # Build user-friendly message if alignment is needed or if intraday found
   det <- paste(sprintf("%s: %s", col_names, per_labels), collapse = ", ")
   if (any(keys < 3L)) {
-    message(sprintf("[.data_prepare] Detected (s) with intraday data (%s). Changing timeframe %s for compatibility.",
-                   paste(col_names[keys < 3L], collapse = ", "), .pretty_scale("days")))
+    message(sprintf(
+      "[.data_prepare] Detected (s) with intraday data (%s). Changing timeframe %s for compatibility.",
+      paste(col_names[keys < 3L], collapse = ", "), .pretty_scale("days")
+    ))
   }
   if (any(keys != target_key)) {
-    message(sprintf("[.data_prepare] Fixing periodicity of returns -> %s | Detected: %s",
-                   .pretty_scale(target_on), det))
+    message(sprintf(
+      "[.data_prepare] Fixing periodicity of returns -> %s | Detected: %s",
+      .pretty_scale(target_on), det
+    ))
   }
 
   # If alignment required, aggregate every column to target_on
@@ -1242,23 +1294,32 @@ fix_pkg <- function(x) {
       fi <- which(!is.na(ativos_data_returns[, j]))
       if (length(fi)) ativos_data_returns[fi[1], j] <- 0
     }
-    vmsg(sprintf("[.data_prepare] Aggregated to %s | rows=%d | cols=%d",
-                 target_on, NROW(ativos_data_returns), NCOL(ativos_data_returns)))
+    vmsg(sprintf(
+      "[.data_prepare] Aggregated to %s | rows=%d | cols=%d",
+      target_on, NROW(ativos_data_returns), NCOL(ativos_data_returns)
+    ))
   }
 
   # Ensure column names exist and match column count
-  target_nms <- if (length(col_names) >= NCOL(ativos_data_returns)) col_names[seq_len(NCOL(ativos_data_returns))]
-                else paste0("Serie", seq_len(NCOL(ativos_data_returns)))
+  target_nms <- if (length(col_names) >= NCOL(ativos_data_returns)) {
+    col_names[seq_len(NCOL(ativos_data_returns))]
+  } else {
+    paste0("Serie", seq_len(NCOL(ativos_data_returns)))
+  }
   colnames(ativos_data_returns) <- target_nms
-  vmsg(sprintf("[.data_prepare] Final prepared | rows=%d | cols=%d | names=%s",
-               NROW(ativos_data_returns), NCOL(ativos_data_returns), paste(target_nms, collapse=",")))
+  vmsg(sprintf(
+    "[.data_prepare] Final prepared | rows=%d | cols=%d | names=%s",
+    NROW(ativos_data_returns), NCOL(ativos_data_returns), paste(target_nms, collapse = ",")
+  ))
   # Final safety: ensure xts type
   if (!xts::is.xts(ativos_data_returns) && inherits(ativos_data_returns, "zoo")) {
     ativos_data_returns <- xts::as.xts(ativos_data_returns)
   }
-  vmsg(sprintf("[.data_prepare] Returning class=%s | rows=%d | cols=%d",
-               paste(class(ativos_data_returns), collapse=","),
-               NROW(ativos_data_returns), NCOL(ativos_data_returns)))
+  vmsg(sprintf(
+    "[.data_prepare] Returning class=%s | rows=%d | cols=%d",
+    paste(class(ativos_data_returns), collapse = ","),
+    NROW(ativos_data_returns), NCOL(ativos_data_returns)
+  ))
   return(ativos_data_returns)
 }
 
@@ -1276,14 +1337,20 @@ fix_pkg <- function(x) {
                            normalize_risk = NULL,
                            ativo_name = NULL,
                            verbose = getOption("tplot.verbose", FALSE)) {
-  vmsg <- function(...) { if (isTRUE(verbose)) message(...) }
+  vmsg <- function(...) {
+    if (isTRUE(verbose)) message(...)
+  }
   # 1) Guarantee Date inputs
-  init  <- as.Date(init)
+  init <- as.Date(init)
   finit <- as.Date(finit)
 
   # 2) Prefer quantstrat/blotter portfolio data by name (portfolio-first lookup)
-  mktdata <- NULL; trades <- NULL; stats <- NULL
-  pf_name <- NULL; port_rets <- NULL; bt_rets <- NULL
+  mktdata <- NULL
+  trades <- NULL
+  stats <- NULL
+  pf_name <- NULL
+  port_rets <- NULL
+  bt_rets <- NULL
   from_backtest <- FALSE
   # Optional hint provided by wrapper to select a specific portfolio/symbol
   hint <- getOption("tplot.portfolio_hint", NULL)
@@ -1291,8 +1358,8 @@ fix_pkg <- function(x) {
     qs <- .quantstrat_portfolio_data(hint$name, init, finit)
     if (is.list(qs)) {
       mktdata <- qs$mktdata %||% NULL
-      trades  <- qs$trades  %||% NULL
-      chosen  <- qs$symbol %||% NULL
+      trades <- qs$trades %||% NULL
+      chosen <- qs$symbol %||% NULL
       pf_name <- hint$name
       # If user requested a different symbol explicitly, override
       if (!is.null(hint$symbol) && is.character(hint$symbol) && length(hint$symbol) == 1) {
@@ -1308,11 +1375,12 @@ fix_pkg <- function(x) {
           od <- .get_function_if_exists("sm_get_data")
           if (!is.null(od)) {
             fetched <- tryCatch(od(hint$symbol, start_date = init, end_date = finit, auto_returns = FALSE), error = function(e) NULL)
-            if (.is_xts(fetched)) mktdata <- .subset_xts(fetched, init, finit)
-            else if (is.list(fetched) && length(fetched) > 0 && .is_xts(fetched[[1]])) mktdata <- .subset_xts(fetched[[1]], init, finit)
+            if (.is_xts(fetched)) {
+              mktdata <- .subset_xts(fetched, init, finit)
+            } else if (is.list(fetched) && length(fetched) > 0 && .is_xts(fetched[[1]])) mktdata <- .subset_xts(fetched[[1]], init, finit)
           }
           if (is.null(mktdata) || !.is_ohlc_xts(mktdata)) {
-            obj <- tryCatch(suppressWarnings(quantmod::getSymbols(hint$symbol, from = init, to = finit, auto.assign = FALSE)), error=function(e) NULL)
+            obj <- tryCatch(suppressWarnings(quantmod::getSymbols(hint$symbol, from = init, to = finit, auto.assign = FALSE)), error = function(e) NULL)
             if (.is_xts(obj)) mktdata <- .subset_xts(obj, init, finit)
           }
         }
@@ -1328,7 +1396,7 @@ fix_pkg <- function(x) {
     qs <- .quantstrat_portfolio_data(ativo, init, finit)
     if (is.list(qs)) {
       mktdata <- qs$mktdata %||% NULL
-      trades  <- qs$trades  %||% NULL
+      trades <- qs$trades %||% NULL
       pf_name <- ativo
       # If a portfolio was detected, prefer using the resolved symbol as the label
       if (!is.null(qs$symbol)) {
@@ -1345,8 +1413,8 @@ fix_pkg <- function(x) {
       vmsg(sprintf("[.tplot_prepare] Loaded PortfReturns for '%s' | rows=%d", pf_name, NROW(port_rets)))
     }
   }
-  ativo_obj         <- if (!is.character(ativo)) ativo else .get_object_if_exists(ativo)
-  ativo_source_obj  <- ativo_obj
+  ativo_obj <- if (!is.character(ativo)) ativo else .get_object_if_exists(ativo)
+  ativo_source_obj <- ativo_obj
   # If no quantstrat portfolio detected, try a generic backtest object in the env
   if (is.null(mktdata) && is.null(trades)) {
     bt_env <- .as_backtest(ativo_obj)
@@ -1355,7 +1423,7 @@ fix_pkg <- function(x) {
       valid_idx <- which(!vapply(nested_bt, is.null, logical(1), USE.NAMES = FALSE))
       if (length(valid_idx) > 0) {
         idx_use <- valid_idx[1]
-        bt_env  <- nested_bt[[idx_use]]
+        bt_env <- nested_bt[[idx_use]]
         if (is.list(ativo_obj[[idx_use]])) {
           ativo_source_obj <- ativo_obj[[idx_use]]
         }
@@ -1375,21 +1443,27 @@ fix_pkg <- function(x) {
     if (!is.null(bt_env)) {
       from_backtest <- TRUE
       mktdata <- bt_env$mktdata %||% NULL
-      trades  <- bt_env$trades  %||% NULL
-      stats   <- bt_env$stats   %||% NULL
-      bt_rets <- bt_env$rets    %||% NULL
+      trades <- bt_env$trades %||% NULL
+      stats <- bt_env$stats %||% NULL
+      bt_rets <- bt_env$rets %||% NULL
       # Prefer asset label from stats$Symbol when present
       extract_sym <- function(st) {
-        if (is.null(st)) return(NULL)
+        if (is.null(st)) {
+          return(NULL)
+        }
         if (is.data.frame(st) && "Symbol" %in% colnames(st)) {
           vv <- as.character(st$Symbol)
           vv <- vv[!is.na(vv) & nzchar(vv)]
-          if (length(vv) > 0) return(vv[1])
+          if (length(vv) > 0) {
+            return(vv[1])
+          }
         }
         if (is.list(st) && !is.null(st$Symbol)) {
           vv <- as.character(st$Symbol)
           vv <- vv[!is.na(vv) & nzchar(vv)]
-          if (length(vv) > 0) return(vv[1])
+          if (length(vv) > 0) {
+            return(vv[1])
+          }
         }
         NULL
       }
@@ -1408,8 +1482,8 @@ fix_pkg <- function(x) {
   }
 
   # 3) Resolve series map for returns (env-first), with portfolio/backtest awareness
-  series_map   <- list()
-  requested    <- character(0)
+  series_map <- list()
+  requested <- character(0)
   # ativo can be xts or string name
   if (.is_xts(ativo) || is.matrix(ativo) || is.data.frame(ativo) || inherits(ativo, "zoo")) {
     at_xts <- .to_xts(ativo)
@@ -1448,12 +1522,16 @@ fix_pkg <- function(x) {
       if (is.data.frame(st) && "Symbol" %in% colnames(st)) {
         vv <- as.character(st$Symbol)
         vv <- vv[!is.na(vv) & nzchar(vv)]
-        if (length(vv) > 0) return(vv[1])
+        if (length(vv) > 0) {
+          return(vv[1])
+        }
       }
       if (is.list(st) && !is.null(st$Symbol)) {
         vv <- as.character(st$Symbol)
         vv <- vv[!is.na(vv) & nzchar(vv)]
-        if (length(vv) > 0) return(vv[1])
+        if (length(vv) > 0) {
+          return(vv[1])
+        }
       }
     }
     default_label
@@ -1465,7 +1543,7 @@ fix_pkg <- function(x) {
         added <- FALSE
         if (is.character(sym) && length(sym) == 1) {
           obj <- .get_object_if_exists(sym)
-          bt  <- .as_backtest(obj)
+          bt <- .as_backtest(obj)
           if (!is.null(bt) && .is_xts(bt$rets)) {
             lab <- label_from_stats(bt$stats, sym)
             series_map[[lab]] <- .subset_xts(bt$rets, init, finit)
@@ -1508,7 +1586,7 @@ fix_pkg <- function(x) {
         } else if (is.character(bi) && length(bi) == 1) {
           # try resolve by name as backtest first
           obj <- .get_object_if_exists(bi)
-          bt  <- .as_backtest(obj)
+          bt <- .as_backtest(obj)
           if (!is.null(bt) && .is_xts(bt$rets)) {
             lab <- label_from_stats(bt$stats, bi)
             series_map[[lab]] <- .subset_xts(bt$rets, init, finit)
@@ -1542,7 +1620,14 @@ fix_pkg <- function(x) {
     for (i in seq_along(requested)) {
       sym <- requested[i]
       cnt <- seen_req[[sym]]
-      if (is.null(cnt)) { seen_req[[sym]] <- 1L; lbls[i] <- sym } else { cnt <- cnt + 1L; seen_req[[sym]] <- cnt; lbls[i] <- paste0(sym, "_", cnt) }
+      if (is.null(cnt)) {
+        seen_req[[sym]] <- 1L
+        lbls[i] <- sym
+      } else {
+        cnt <- cnt + 1L
+        seen_req[[sym]] <- cnt
+        lbls[i] <- paste0(sym, "_", cnt)
+      }
     }
     req_map <- requested
     names(req_map) <- lbls
@@ -1559,17 +1644,27 @@ fix_pkg <- function(x) {
       message("Getting data with sm_get_data() for: ", paste(unname(req_map[missing_labels]), collapse = ", "))
       for (lab in missing_labels) {
         sym <- unname(req_map[lab])
-        fetched_one <- tryCatch(od(sym,
-                                   start_date   = init,
-                                   end_date     = finit,
-                                   auto_returns = geometric),
-                                error = function(e) NULL)
+        fetched_one <- tryCatch(
+          od(sym,
+            start_date   = init,
+            end_date     = finit,
+            auto_returns = geometric
+          ),
+          error = function(e) NULL
+        )
         if (.is_xts(fetched_one)) {
           dados_raw[[lab]] <- .subset_xts(fetched_one, init, finit)
         } else if (is.list(fetched_one) && length(fetched_one) > 0) {
           pick <- NULL
           if (!is.null(names(fetched_one)) && sym %in% names(fetched_one)) pick <- fetched_one[[sym]]
-          if (is.null(pick)) { for (el in fetched_one) { if (.is_xts(el)) { pick <- el; break } } }
+          if (is.null(pick)) {
+            for (el in fetched_one) {
+              if (.is_xts(el)) {
+                pick <- el
+                break
+              }
+            }
+          }
           if (.is_xts(pick)) dados_raw[[lab]] <- .subset_xts(pick, init, finit)
         }
       }
@@ -1611,9 +1706,13 @@ fix_pkg <- function(x) {
   # 'ativo' and 'benchs' (in the order they were provided).
   if ((is.null(mktdata) || !.is_ohlc_xts(mktdata)) && !from_backtest && is.null(pf_name)) {
     choose_first_ohlc <- function(nm) {
-      if (is.null(nm)) return(NULL)
+      if (is.null(nm)) {
+        return(NULL)
+      }
       x <- dados_raw[[nm]]
-      if (.is_xts(x) && .is_ohlc_xts(x)) return(.subset_xts(x, init, finit))
+      if (.is_xts(x) && .is_ohlc_xts(x)) {
+        return(.subset_xts(x, init, finit))
+      }
       NULL
     }
     # Try the main asset name if it's a string
@@ -1635,7 +1734,10 @@ fix_pkg <- function(x) {
       if (length(bench_names)) {
         for (nm in bench_names) {
           cand <- choose_first_ohlc(nm)
-          if (!is.null(cand)) { mktdata <- cand; break }
+          if (!is.null(cand)) {
+            mktdata <- cand
+            break
+          }
         }
       }
     }
@@ -1643,10 +1745,12 @@ fix_pkg <- function(x) {
 
   # 6) Normalize/prepare returns from whatever we have
   dados_trat <- .data_prepare(dados_raw, verbose = verbose)
-  vmsg(sprintf("[.tplot_prepare] .data_prepare class=%s | rows=%s | cols=%s",
-               paste(class(dados_trat), collapse=","),
-               tryCatch(NROW(dados_trat), error=function(e) "?"),
-               tryCatch(NCOL(dados_trat), error=function(e) "?")))
+  vmsg(sprintf(
+    "[.tplot_prepare] .data_prepare class=%s | rows=%s | cols=%s",
+    paste(class(dados_trat), collapse = ","),
+    tryCatch(NROW(dados_trat), error = function(e) "?"),
+    tryCatch(NCOL(dados_trat), error = function(e) "?")
+  ))
   # Guarantee xts and column names for downstream operations
   if (!.is_xts(dados_trat)) {
     vmsg("[.tplot_prepare] .data_prepare did not return xts; attempting coercion")
@@ -1658,37 +1762,46 @@ fix_pkg <- function(x) {
       vmsg("[.tplot_prepare] Fallback path: building returns from raw series")
       build_ret <- function(x) {
         xx <- .to_xts(x)
-        if (!.is_xts(xx)) return(NULL)
+        if (!.is_xts(xx)) {
+          return(NULL)
+        }
         # pick Adjusted/Close/first
         cn <- colnames(xx)
         pick <- if (length(cn)) {
           idxA <- grep("(^|\\.)Adjusted$", cn, ignore.case = TRUE)
           idxC <- grep("(^|\\.)Close$", cn, ignore.case = TRUE)
           if (length(idxA)) idxA[1] else if (length(idxC)) idxC[1] else 1L
-        } else 1L
+        } else {
+          1L
+        }
         px <- xx[, pick, drop = FALSE]
         ret <- try(PerformanceAnalytics::Return.calculate(px, method = "discrete"), silent = TRUE)
-        if (inherits(ret, "try-error")) return(NULL)
+        if (inherits(ret, "try-error")) {
+          return(NULL)
+        }
         ret[1, ] <- 0
         ret
       }
       rets <- list()
       for (nm in names(dados_raw)) {
         rr <- build_ret(dados_raw[[nm]])
-        if (.is_xts(rr)) { colnames(rr) <- nm; rets[[nm]] <- rr }
+        if (.is_xts(rr)) {
+          colnames(rr) <- nm
+          rets[[nm]] <- rr
+        }
       }
       if (length(rets) == 0) stop("Prepared data is not an xts time series.")
       merged <- Reduce(function(a, b) merge(a, b, join = "inner"), rets)
       # Aggregate to daily by compounding within each day (safe baseline)
       ep <- tryCatch(xts::endpoints(merged, on = "days"), error = function(e) integer(0))
       if (length(ep) > 1) {
-        agg <- lapply(seq_len(ncol(merged)), function(j){
+        agg <- lapply(seq_len(ncol(merged)), function(j) {
           vals <- merged[, j, drop = FALSE]
-          out  <- vector("numeric", length(ep) - 1L)
+          out <- vector("numeric", length(ep) - 1L)
           for (k in seq_len(length(ep) - 1L)) {
             seg <- vals[(ep[k] + 1L):ep[k + 1L], , drop = FALSE]
-            rr  <- as.numeric(seg)
-            rr  <- rr[is.finite(rr)]
+            rr <- as.numeric(seg)
+            rr <- rr[is.finite(rr)]
             out[k] <- if (length(rr)) exp(sum(log1p(rr))) - 1 else NA_real_
           }
           xts::xts(out, order.by = as.Date(index(merged)[ep[-1]]))
@@ -1703,8 +1816,9 @@ fix_pkg <- function(x) {
   if (is.null(colnames(dados_trat)) || length(colnames(dados_trat)) == 0) {
     # try to adopt names from dados_raw or fallback generic
     base_nms <- names(dados_raw)
-    if (is.null(base_nms) || length(base_nms) == 0)
+    if (is.null(base_nms) || length(base_nms) == 0) {
       base_nms <- paste0("Serie", seq_len(NCOL(dados_trat)))
+    }
     colnames(dados_trat) <- base_nms[seq_len(NCOL(dados_trat))]
   }
   if (NCOL(dados_trat) == 0 || NROW(dados_trat) == 0) {
@@ -1729,7 +1843,7 @@ fix_pkg <- function(x) {
   ativo_name <- keep_cols[1]
   benchs_labels <- if (length(keep_cols) > 1) keep_cols[-1] else character(0)
   # Build two views: full (outer-joined) and common (intersection of all series)
-  carteira_full  <- dados_trat[, keep_cols, drop = FALSE]
+  carteira_full <- dados_trat[, keep_cols, drop = FALSE]
 
   risk_applied <- NULL
   if (!is.null(normalize_risk)) {
@@ -1769,7 +1883,7 @@ fix_pkg <- function(x) {
     }
   }
   # Keep only rows where all selected series have data for fair charting/metrics
-  complete_rows  <- apply(!is.na(carteira_full), 1, all)
+  complete_rows <- apply(!is.na(carteira_full), 1, all)
   if (!any(complete_rows)) {
     message("[.tplot_prepare] No overlapping period across selected series; using last non-NA overlaps if available.")
     carteira <- na.omit(carteira_full)
@@ -1788,51 +1902,65 @@ fix_pkg <- function(x) {
   }
 
   # 9) Metrics
-  car_anu    <- Return.annualized(carteira, geometric = geometric)
-  car_tot    <- Return.cumulative(carteira, geometric = geometric)
-  car_dd     <- maxDrawdown(carteira)
+  car_anu <- Return.annualized(carteira, geometric = geometric)
+  car_tot <- Return.cumulative(carteira, geometric = geometric)
+  car_dd <- maxDrawdown(carteira)
   # Annualize SD using detected periodicity of 'carteira'
   # Infer return frequency without xts::periodicity to avoid segfaults
   infer_sd_scale <- function(x) {
     idx <- index(x)
-    if (inherits(idx, "Date")) return("daily")
+    if (inherits(idx, "Date")) {
+      return("daily")
+    }
     if (inherits(idx, "POSIXct") || inherits(idx, "POSIXt")) {
       d <- suppressWarnings(stats::median(diff(as.numeric(idx)), na.rm = TRUE))
-      day_s <- 86400; week_s <- day_s * 7; month_s <- day_s * 30; quarter_s <- day_s * 90
-      if (!is.finite(d) || is.na(d) || d <= 0) return("daily")
-      if (d < week_s) return("daily")
-      if (d < month_s) return("weekly")
-      if (d < quarter_s) return("monthly")
+      day_s <- 86400
+      week_s <- day_s * 7
+      month_s <- day_s * 30
+      quarter_s <- day_s * 90
+      if (!is.finite(d) || is.na(d) || d <= 0) {
+        return("daily")
+      }
+      if (d < week_s) {
+        return("daily")
+      }
+      if (d < month_s) {
+        return("weekly")
+      }
+      if (d < quarter_s) {
+        return("monthly")
+      }
       return("quarterly")
     }
     # fallback
     "daily"
   }
-  per_card   <- infer_sd_scale(carteira)
-  scale_fac  <- switch(tolower(per_card),
-                       "daily"   = 252,
-                       "day"     = 252,
-                       "weekly"  = 52,
-                       "week"    = 52,
-                       "monthly" = 12,
-                       "month"   = 12,
-                       "quarterly"= 4,
-                       "quarter" = 4,
-                       "yearly"  = 1,
-                       "annual"  = 1,
-                       252)
-  car_sd     <- apply(na.omit(carteira), 2, sd) * sqrt(scale_fac)
+  per_card <- infer_sd_scale(carteira)
+  scale_fac <- switch(tolower(per_card),
+    "daily" = 252,
+    "day" = 252,
+    "weekly" = 52,
+    "week" = 52,
+    "monthly" = 12,
+    "month" = 12,
+    "quarterly" = 4,
+    "quarter" = 4,
+    "yearly" = 1,
+    "annual" = 1,
+    252
+  )
+  car_sd <- apply(na.omit(carteira), 2, sd) * sqrt(scale_fac)
   car_sharpe <- (car_anu - rf_final) / car_sd
-  car_sort   <- SortinoRatio(carteira)
+  car_sort <- SortinoRatio(carteira)
   car_sort[is.infinite(car_sort)] <- 0
 
   carteira_df <- data.frame(
-    Asset   = colnames(carteira),
-    Total   = round(as.vector(car_tot * 100), 3),
-    CAR     = round(as.vector(car_anu * 100), 2),
-    MaxDD   = round(as.vector(car_dd * 100), 2),
+    Asset = colnames(carteira),
+    Total = round(as.vector(car_tot * 100), 3),
+    CAR = round(as.vector(car_anu * 100), 2),
+    MaxDD = round(as.vector(car_dd * 100), 2),
     Std_Dev = round(as.vector(car_sd * 100), 3),
-    Sharpe  = round(as.vector(car_sharpe), 2),
+    Sharpe = round(as.vector(car_sharpe), 2),
     Sortino = round(as.vector(car_sort), 3),
     row.names = NULL,
     stringsAsFactors = FALSE
@@ -1849,19 +1977,21 @@ fix_pkg <- function(x) {
     ret_cum <- (cumprod(1 + carteira) - 1) * 100
   }
   ret_sim <- carteira * 100
-  dds     <- Drawdowns(carteira) * 100
-  datas   <- as.numeric(as.POSIXct(index(ret_cum))) * 1000
+  dds <- Drawdowns(carteira) * 100
+  datas <- as.numeric(as.POSIXct(index(ret_cum))) * 1000
   # English aliases
-  cum_returns    <- ret_cum
+  cum_returns <- ret_cum
   period_returns <- ret_sim
-  drawdowns      <- dds
-  timestamps     <- datas
+  drawdowns <- dds
+  timestamps <- datas
 
   # Build monthly/annual tables per series using each one's full history
   lista_tabs <- lapply(colnames(carteira_full), function(x) {
     series_x <- carteira_full[, x, drop = FALSE]
     series_x <- na.omit(series_x)
-    if (NROW(series_x) < 1) return(data.frame())
+    if (NROW(series_x) < 1) {
+      return(data.frame())
+    }
     rentab_table_calc(series_x, retornar = TRUE, geometric = geometric)
   })
   names(lista_tabs) <- colnames(carteira_full)
@@ -1869,37 +1999,37 @@ fix_pkg <- function(x) {
 
   resultado <- list(
     # Preferred English fields
-    asset          = ativo_name,
-    benchmarks     = benchs_labels,
-    start_date     = first(index(cum_returns)),
-    end_date       = last(index(cum_returns)),
-    portfolio      = carteira,
-    stats_df       = carteira_df,
-    cum_returns    = cum_returns,
+    asset = ativo_name,
+    benchmarks = benchs_labels,
+    start_date = first(index(cum_returns)),
+    end_date = last(index(cum_returns)),
+    portfolio = carteira,
+    stats_df = carteira_df,
+    cum_returns = cum_returns,
     period_returns = period_returns,
-    drawdowns      = drawdowns,
-    timestamps     = timestamps,
+    drawdowns = drawdowns,
+    timestamps = timestamps,
     returns_tables = returns_tables,
     # Legacy fields for backward-compatibility
-    ativo       = ativo_name,
-    benchs      = benchs_labels,
-    init_date   = first(index(ret_cum)),
-    finit_date  = last(index(ret_cum)),
-    carteira    = carteira,
+    ativo = ativo_name,
+    benchs = benchs_labels,
+    init_date = first(index(ret_cum)),
+    finit_date = last(index(ret_cum)),
+    carteira = carteira,
     carteira_df = carteira_df,
-    ret_cum     = ret_cum,
-    ret_sim     = ret_sim,
-    dds         = dds,
-    datas       = datas,
-    lista_tabs  = lista_tabs
+    ret_cum = ret_cum,
+    ret_sim = ret_sim,
+    dds = dds,
+    datas = datas,
+    lista_tabs = lista_tabs
   )
 
   if (!is.null(risk_applied)) resultado$normalize_risk <- risk_applied
 
   # 11) Conditionally attach backtest extras
   if (!is.null(mktdata)) resultado$mktdata <- mktdata
-  if (!is.null(trades))  resultado$trades  <- if (NROW(trades) > 1) trades[-1] else trades
-  if (!is.null(stats))   resultado$stats   <- stats
+  if (!is.null(trades)) resultado$trades <- if (NROW(trades) > 1) trades[-1] else trades
+  if (!is.null(stats)) resultado$stats <- stats
 
   resultado
 }
@@ -1911,12 +2041,12 @@ fix_pkg <- function(x) {
 #' @keywords internal
 .tplot_render_json <- function(prep, modules) {
   out <- list()
-  if("stats"      %in% modules) out$stats      <- stats_json(prep$stats_df %||% prep$carteira_df)
-  if("cumulative" %in% modules) out$cumulative <- series_json(prep$cum_returns    %||% prep$ret_cum, prep$timestamps %||% prep$datas)
-  if("period"     %in% modules) out$period     <- series_json(prep$period_returns %||% prep$ret_sim, prep$timestamps %||% prep$datas)
-  if("drawdowns"  %in% modules) out$drawdowns  <- series_json(prep$drawdowns      %||% prep$dds,     prep$timestamps %||% prep$datas)
-  if("table"      %in% modules) out$table      <- rentab_json(prep$returns_tables %||% prep$lista_tabs)
-  jsonlite::toJSON(out, auto_unbox=TRUE, pretty=TRUE, na="null")
+  if ("stats" %in% modules) out$stats <- stats_json(prep$stats_df %||% prep$carteira_df)
+  if ("cumulative" %in% modules) out$cumulative <- series_json(prep$cum_returns %||% prep$ret_cum, prep$timestamps %||% prep$datas)
+  if ("period" %in% modules) out$period <- series_json(prep$period_returns %||% prep$ret_sim, prep$timestamps %||% prep$datas)
+  if ("drawdowns" %in% modules) out$drawdowns <- series_json(prep$drawdowns %||% prep$dds, prep$timestamps %||% prep$datas)
+  if ("table" %in% modules) out$table <- rentab_json(prep$returns_tables %||% prep$lista_tabs)
+  jsonlite::toJSON(out, auto_unbox = TRUE, pretty = TRUE, na = "null")
 }
 
 #' Renders the tplot output in HTML format
@@ -1930,12 +2060,16 @@ fix_pkg <- function(x) {
 .tplot_render_html <- function(prep, modules, theme = dark_theme(), output_dir = "~",
                                viewer = FALSE) {
   head_tags <- tagList(
-    tags$meta(charset="UTF-8"),
-    tags$meta(name="viewport",
-              content="width=device-width, initial-scale=1"),
-    tags$title(sprintf("tplot_%s_%s",
-                       (prep$asset %||% prep$ativo),
-                       format(Sys.time(), "%Y%m%d_%H%M%S"))),
+    tags$meta(charset = "UTF-8"),
+    tags$meta(
+      name = "viewport",
+      content = "width=device-width, initial-scale=1"
+    ),
+    tags$title(sprintf(
+      "tplot_%s_%s",
+      (prep$asset %||% prep$ativo),
+      format(Sys.time(), "%Y%m%d_%H%M%S")
+    )),
     tags$style(HTML(sprintf(
       "html,body{margin:0;padding:0;background:%s;}
        #tplot-container{margin:0 auto;padding:10px;box-sizing:border-box;width:100%%;}
@@ -1947,8 +2081,8 @@ fix_pkg <- function(x) {
   sync_with_candles <- "candles" %in% modules
 
   data_inicial <- format((prep$start_date %||% prep$init_date), "%d-%m-%Y")
-  data_final   <- format((prep$end_date   %||% prep$finit_date), "%d-%m-%Y")
-  linha_datas  <- tags$div(
+  data_final <- format((prep$end_date %||% prep$finit_date), "%d-%m-%Y")
+  linha_datas <- tags$div(
     style = sprintf(
       "text-align:right;font-family:%s;font-size:12px;font-weight:bold;
        margin:30px 30px -10px 50px;color:%s;",
@@ -1957,64 +2091,88 @@ fix_pkg <- function(x) {
     # paste(data_inicial, "a", data_final)
   )
   page <- tagList()
-  link_flag <- all(c("cumulative","rolling","period","drawdowns") %in% modules)
+  link_flag <- all(c("cumulative", "rolling", "period", "drawdowns") %in% modules)
 
   for (mod in modules) {
     ui <- switch(mod,
-                 stats      = tagList(stats_module(prep$stats_df %||% prep$carteira_df,
-                                                   (prep$asset %||% prep$ativo),
-                                                   (prep$benchmarks %||% prep$benchs),
-                                                   theme),
-                                      linha_datas),
-                 candles    = candles_module(prep$market_data %||% prep$mktdata,
-                                             prep$trades,
-                                             theme,
-                                             (prep$asset %||% prep$ativo)),
-                 volume     = volume_module(prep$market_data %||% prep$mktdata,
-                                            theme),
-                 position   = position_module(prep$market_data %||% prep$mktdata,
-                                              prep$trades,
-                                              theme,
-                                              TRUE),
-                 cumulative = cumret_module(prep$cum_returns %||% prep$ret_cum,
-                                            prep$timestamps %||% prep$datas,
-                                            (prep$asset %||% prep$ativo),
-                                            (prep$benchmarks %||% prep$benchs),
-                                            theme,
-                                            link_flag,
-                                            sync_with_candles),
-                 rolling = rollingret_module(prep$cum_returns %||% prep$ret_cum,
-                                             prep$timestamps %||% prep$datas,
-                                             (prep$asset %||% prep$ativo),
-                                             (prep$benchmarks %||% prep$benchs),
-                                             theme,
-                                             sync_with_candles),
-                 period     = periodret_module(prep$period_returns %||% prep$ret_sim,
-                                               prep$timestamps %||% prep$datas,
-                                               (prep$asset %||% prep$ativo),
-                                               (prep$benchmarks %||% prep$benchs),
-                                               theme,
-                                               sync_with_candles),
-                 drawdowns  = drawdown_module(prep$drawdowns %||% prep$dds,
-                                              prep$timestamps %||% prep$datas,
-                                              (prep$asset %||% prep$ativo),
-                                              (prep$benchmarks %||% prep$benchs),
-                                              theme,
-                                              sync_with_candles),
-                 table      = rentab_table_module(prep$returns_tables %||% prep$lista_tabs,
-                                                  (prep$asset %||% prep$ativo),
-                                                  (prep$benchmarks %||% prep$benchs),
-                                                  theme),
-                 footer     = footer_module(theme)
+      stats = tagList(
+        stats_module(
+          prep$stats_df %||% prep$carteira_df,
+          (prep$asset %||% prep$ativo),
+          (prep$benchmarks %||% prep$benchs),
+          theme
+        ),
+        linha_datas
+      ),
+      candles = candles_module(
+        prep$market_data %||% prep$mktdata,
+        prep$trades,
+        theme,
+        (prep$asset %||% prep$ativo)
+      ),
+      volume = volume_module(
+        prep$market_data %||% prep$mktdata,
+        theme
+      ),
+      position = position_module(
+        prep$market_data %||% prep$mktdata,
+        prep$trades,
+        theme,
+        TRUE
+      ),
+      cumulative = cumret_module(
+        prep$cum_returns %||% prep$ret_cum,
+        prep$timestamps %||% prep$datas,
+        (prep$asset %||% prep$ativo),
+        (prep$benchmarks %||% prep$benchs),
+        theme,
+        link_flag,
+        sync_with_candles
+      ),
+      rolling = rollingret_module(
+        prep$cum_returns %||% prep$ret_cum,
+        prep$timestamps %||% prep$datas,
+        (prep$asset %||% prep$ativo),
+        (prep$benchmarks %||% prep$benchs),
+        theme,
+        sync_with_candles
+      ),
+      period = periodret_module(
+        prep$period_returns %||% prep$ret_sim,
+        prep$timestamps %||% prep$datas,
+        (prep$asset %||% prep$ativo),
+        (prep$benchmarks %||% prep$benchs),
+        theme,
+        sync_with_candles
+      ),
+      drawdowns = drawdown_module(
+        prep$drawdowns %||% prep$dds,
+        prep$timestamps %||% prep$datas,
+        (prep$asset %||% prep$ativo),
+        (prep$benchmarks %||% prep$benchs),
+        theme,
+        sync_with_candles
+      ),
+      table = rentab_table_module(
+        prep$returns_tables %||% prep$lista_tabs,
+        (prep$asset %||% prep$ativo),
+        (prep$benchmarks %||% prep$benchs),
+        theme
+      ),
+      footer = footer_module(theme)
     )
-    page <- tagAppendChild(page,
-                           tags$div(class="module", ui))
+    page <- tagAppendChild(
+      page,
+      tags$div(class = "module", ui)
+    )
   }
   container <- tags$div(
-    id    = "tplot-container",
-    style = sprintf("background:%s;color:%s;",
-                    theme$colors$page_bg,
-                    theme$colors$page_txt),
+    id = "tplot-container",
+    style = sprintf(
+      "background:%s;color:%s;",
+      theme$colors$page_bg,
+      theme$colors$page_txt
+    ),
     page
   )
   doc <- tags$html(
@@ -2035,18 +2193,21 @@ fix_pkg <- function(x) {
   ## 6) determina destino
   if (is.null(output_dir)) output_dir <- getwd()
   dir.create(output_dir,
-             recursive = TRUE,
-             showWarnings = FALSE)
-  nome    <- sprintf("tplot_%s_%s.html",
-                     (prep$asset %||% prep$ativo),
-                     format(Sys.time(), "%Y%m%d_%H%M%S"))
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  nome <- sprintf(
+    "tplot_%s_%s.html",
+    (prep$asset %||% prep$ativo),
+    format(Sys.time(), "%Y%m%d_%H%M%S")
+  )
   destino <- file.path(output_dir, nome)
   ## 7) salva com htmltools::save_html()
   #    selfcontained = FALSE e libdir = "files"
 
   save_html(
-    html   = doc,
-    file   = destino,
+    html = doc,
+    file = destino,
     libdir = "https://balboa.wiseturtle.com.br/api/hplots/files",
     background = theme$colors$page_bg
   )
@@ -2056,9 +2217,11 @@ fix_pkg <- function(x) {
   html_content <- gsub("%2F", "/", html_content, fixed = TRUE)
   writeLines(html_content, destino, useBytes = TRUE)
 
-  message("  HTML generated at: ", destino,
-          "\n  Libs folder at: ",
-          file.path(dirname(destino), "files/"))
+  message(
+    "  HTML generated at: ", destino,
+    "\n  Libs folder at: ",
+    file.path(dirname(destino), "files/")
+  )
   invisible(destino)
 }
 
@@ -2098,57 +2261,71 @@ fix_pkg <- function(x) {
   }
 
   # Build long frames for ggplot
-  df_cum <- data.frame(date = as.Date(index(prep$cum_returns %||% prep$ret_cum)),
-                       as.data.frame(prep$cum_returns %||% prep$ret_cum, check.names = FALSE))
-  df_sim <- data.frame(date = as.Date(index(prep$period_returns %||% prep$ret_sim)),
-                       as.data.frame(prep$period_returns %||% prep$ret_sim, check.names = FALSE))
-  df_dd  <- data.frame(date = as.Date(index(prep$drawdowns %||% prep$dds)),
-                       as.data.frame(prep$drawdowns %||% prep$dds, check.names = FALSE))
+  df_cum <- data.frame(
+    date = as.Date(index(prep$cum_returns %||% prep$ret_cum)),
+    as.data.frame(prep$cum_returns %||% prep$ret_cum, check.names = FALSE)
+  )
+  df_sim <- data.frame(
+    date = as.Date(index(prep$period_returns %||% prep$ret_sim)),
+    as.data.frame(prep$period_returns %||% prep$ret_sim, check.names = FALSE)
+  )
+  df_dd <- data.frame(
+    date = as.Date(index(prep$drawdowns %||% prep$dds)),
+    as.data.frame(prep$drawdowns %||% prep$dds, check.names = FALSE)
+  )
   df_cum_l <- pivot_longer(df_cum, -date, names_to = "series", values_to = "value")
   df_sim_l <- pivot_longer(df_sim, -date, names_to = "series", values_to = "value")
-  df_dd_l  <- pivot_longer(df_dd,  -date, names_to = "series", values_to = "value")
+  df_dd_l <- pivot_longer(df_dd, -date, names_to = "series", values_to = "value")
 
   # Helper for subtle grid lines on both light/dark themes
   .is_dark <- function(hex) {
-    x <- tryCatch(grDevices::col2rgb(hex)/255, error = function(e) matrix(c(0,0,0), ncol=1))
+    x <- tryCatch(grDevices::col2rgb(hex) / 255, error = function(e) matrix(c(0, 0, 0), ncol = 1))
     # luminance approx
-    lum <- 0.2126*x[1,1] + 0.7152*x[2,1] + 0.0722*x[3,1]
+    lum <- 0.2126 * x[1, 1] + 0.7152 * x[2, 1] + 0.0722 * x[3, 1]
     lum < 0.5
   }
   .mix_col <- function(col, with = if (.is_dark(theme$colors$chart_bg)) "#FFFFFF" else "#000000", alpha = 0.15) {
-    a <- tryCatch(grDevices::col2rgb(col), error = function(e) matrix(c(200,200,200), ncol=1))
-    b <- tryCatch(grDevices::col2rgb(with), error = function(e) matrix(c(255,255,255), ncol=1))
-    m <- pmax(pmin(round((1-alpha)*a + alpha*b), 255), 0)
-    grDevices::rgb(m[1,1], m[2,1], m[3,1], alpha = 0.8, maxColorValue = 255)
+    a <- tryCatch(grDevices::col2rgb(col), error = function(e) matrix(c(200, 200, 200), ncol = 1))
+    b <- tryCatch(grDevices::col2rgb(with), error = function(e) matrix(c(255, 255, 255), ncol = 1))
+    m <- pmax(pmin(round((1 - alpha) * a + alpha * b), 255), 0)
+    grDevices::rgb(m[1, 1], m[2, 1], m[3, 1], alpha = 0.8, maxColorValue = 255)
   }
   grid_col_major <- .mix_col(theme$colors$axis_txt, alpha = if (.is_dark(theme$colors$chart_bg)) 0.25 else 0.12)
   grid_col_minor <- .mix_col(theme$colors$axis_txt, alpha = if (.is_dark(theme$colors$chart_bg)) 0.12 else 0.06)
 
   base_theme <- ggplot2::theme_minimal(base_family = font_family) +
     ggplot2::theme(
-      plot.background  = ggplot2::element_rect(fill = theme$colors$page_bg,  color = NA),
+      plot.background = ggplot2::element_rect(fill = theme$colors$page_bg, color = NA),
       panel.background = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
-      plot.title       = ggplot2::element_text(size = theme$font_sizes$title,
-                                      color = theme$colors$title_txt, face = "bold"),
-      axis.text        = ggplot2::element_text(size = theme$font_sizes$axis,
-                                      color = theme$colors$axis_txt, face = "bold"),
-      axis.title       = ggplot2::element_text(size = theme$font_sizes$axis,
-                                      color = theme$colors$axis_txt, face = "bold"),
-      legend.text      = ggplot2::element_text(size = theme$font_sizes$legend,
-                                      color = theme$colors$legend_txt),
-      legend.title     = ggplot2::element_blank(),
-      legend.position  = "bottom",
-      legend.background    = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
+      plot.title = ggplot2::element_text(
+        size = theme$font_sizes$title,
+        color = theme$colors$title_txt, face = "bold"
+      ),
+      axis.text = ggplot2::element_text(
+        size = theme$font_sizes$axis,
+        color = theme$colors$axis_txt, face = "bold"
+      ),
+      axis.title = ggplot2::element_text(
+        size = theme$font_sizes$axis,
+        color = theme$colors$axis_txt, face = "bold"
+      ),
+      legend.text = ggplot2::element_text(
+        size = theme$font_sizes$legend,
+        color = theme$colors$legend_txt
+      ),
+      legend.title = ggplot2::element_blank(),
+      legend.position = "bottom",
+      legend.background = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
       legend.box.background = ggplot2::element_rect(fill = theme$colors$chart_bg, color = NA),
       panel.grid.major = ggplot2::element_line(color = grid_col_major, linewidth = 0.3),
       panel.grid.minor = ggplot2::element_line(color = grid_col_minor, linewidth = 0.2),
-      plot.margin      = ggplot2::margin(8, 16, 8, 16)
+      plot.margin = ggplot2::margin(8, 16, 8, 16)
     )
 
   # Axis helpers and limits aligned with HTML modules
   y_cum_min <- suppressWarnings(min(df_cum_l$value, na.rm = TRUE))
   y_cum_max <- suppressWarnings(max(df_cum_l$value, na.rm = TRUE))
-  y_dd_min  <- suppressWarnings(min(df_dd_l$value,  na.rm = TRUE))
+  y_dd_min <- suppressWarnings(min(df_dd_l$value, na.rm = TRUE))
 
   p1 <- ggplot2::ggplot(df_cum_l, ggplot2::aes(date, value, color = series)) +
     ggplot2::geom_line(size = 0.9) +
@@ -2165,7 +2342,8 @@ fix_pkg <- function(x) {
     ggplot2::scale_y_continuous(labels = scales::label_number(scale = 1, suffix = "%"), expand = c(0.01, 0)) +
     ggplot2::scale_x_date(expand = c(0.01, 0)) +
     ggplot2::scale_color_manual(values = theme$palette) +
-    base_theme + ggplot2::theme(legend.position = "none")
+    base_theme +
+    ggplot2::theme(legend.position = "none")
 
   p3 <- ggplot2::ggplot(df_dd_l, ggplot2::aes(date, value, color = series)) +
     ggplot2::geom_line(size = 0.8) +
@@ -2173,14 +2351,15 @@ fix_pkg <- function(x) {
     ggplot2::scale_y_continuous(labels = scales::label_number(scale = 1, suffix = "%"), limits = c(y_dd_min, 0), expand = c(0.01, 0)) +
     ggplot2::scale_x_date(expand = c(0.01, 0)) +
     ggplot2::scale_color_manual(values = theme$palette) +
-    base_theme + ggplot2::theme(legend.position = "none")
+    base_theme +
+    ggplot2::theme(legend.position = "none")
 
   # Tables styling closer to HTML
   # Stats table styling: per-row tinted background using series palette
   stats_rows <- nrow(prep$stats_df %||% prep$carteira_df)
   stats_cols <- ncol(prep$stats_df %||% prep$carteira_df)
   series_order <- c((prep$asset %||% prep$ativo), (prep$benchmarks %||% prep$benchs))
-  row_palette <- vapply(seq_len(stats_rows), function(i){
+  row_palette <- vapply(seq_len(stats_rows), function(i) {
     nm <- as.character((prep$stats_df %||% prep$carteira_df)$Asset[i])
     pal_idx <- match(nm, series_order)
     base_col <- if (!is.na(pal_idx) && pal_idx <= length(theme$palette)) theme$palette[pal_idx] else theme$palette[1]
@@ -2189,20 +2368,28 @@ fix_pkg <- function(x) {
   # build a fill matrix repeating row colors for all body columns
   stats_fill_mat <- matrix(rep(row_palette, stats_cols), nrow = stats_rows, ncol = stats_cols, byrow = FALSE)
   tt_stats <- gridExtra::ttheme_minimal(
-    core    = list(
-      fg_params = list(fontfamily = font_family,
-                       fontsize = theme$font_sizes$table,
-                       col = theme$colors$table_row_txt),
-      bg_params = list(fill = stats_fill_mat,
-                       col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+    core = list(
+      fg_params = list(
+        fontfamily = font_family,
+        fontsize = theme$font_sizes$table,
+        col = theme$colors$table_row_txt
+      ),
+      bg_params = list(
+        fill = stats_fill_mat,
+        col = grDevices::adjustcolor("#000000", alpha.f = 0.10)
+      )
     ),
     colhead = list(
-      fg_params = list(fontfamily = font_family,
-                       fontsize = theme$font_sizes$table,
-                       col = theme$colors$table_header_txt,
-                       fontface = "bold"),
-      bg_params = list(fill = theme$colors$table_header_bg,
-                       col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+      fg_params = list(
+        fontfamily = font_family,
+        fontsize = theme$font_sizes$table,
+        col = theme$colors$table_header_txt,
+        fontface = "bold"
+      ),
+      bg_params = list(
+        fill = theme$colors$table_header_bg,
+        col = grDevices::adjustcolor("#000000", alpha.f = 0.10)
+      )
     )
   )
 
@@ -2210,7 +2397,7 @@ fix_pkg <- function(x) {
   # Make table stretch to full width
   stats_tbl$widths <- grid::unit(rep(1, ncol(prep$stats_df %||% prep$carteira_df)), "null")
 
-  date_lbl  <- textGrob(
+  date_lbl <- textGrob(
     paste0(format((prep$start_date %||% prep$init_date), "%d-%m-%Y"), " to ", format((prep$end_date %||% prep$finit_date), "%d-%m-%Y")),
     x = 1, hjust = 1,
     gp = gpar(fontfamily = font_family, fontsize = theme$font_sizes$table, col = theme$colors$page_txt)
@@ -2228,21 +2415,29 @@ fix_pkg <- function(x) {
     } else {
       fill_mat <- NULL
     }
-    tt  <- gridExtra::ttheme_minimal(
-      core    = list(
-        fg_params = list(fontfamily = font_family,
-                         fontsize = theme$font_sizes$table,
-                         col = theme$colors$table_row_txt),
-        bg_params = list(fill = fill_mat,
-                         col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+    tt <- gridExtra::ttheme_minimal(
+      core = list(
+        fg_params = list(
+          fontfamily = font_family,
+          fontsize = theme$font_sizes$table,
+          col = theme$colors$table_row_txt
+        ),
+        bg_params = list(
+          fill = fill_mat,
+          col = grDevices::adjustcolor("#000000", alpha.f = 0.10)
+        )
       ),
       colhead = list(
-        fg_params = list(fontfamily = font_family,
-                         fontsize = theme$font_sizes$table,
-                         col = theme$colors$table_header_txt,
-                         fontface = "bold"),
-        bg_params = list(fill = theme$colors$table_header_bg,
-                         col  = grDevices::adjustcolor("#000000", alpha.f = 0.10))
+        fg_params = list(
+          fontfamily = font_family,
+          fontsize = theme$font_sizes$table,
+          col = theme$colors$table_header_txt,
+          fontface = "bold"
+        ),
+        bg_params = list(
+          fill = theme$colors$table_header_bg,
+          col = grDevices::adjustcolor("#000000", alpha.f = 0.10)
+        )
       )
     )
     tg <- tableGrob(df2, rows = NULL, theme = tt)
@@ -2251,11 +2446,14 @@ fix_pkg <- function(x) {
   })
 
   footer_lbl <- textGrob(theme$footer_text,
-                         gp = gpar(fontfamily = font_family,
-                                   fontsize = theme$font_sizes$table,
-                                   col = theme$colors$footer_txt,
-                                   fontface = "bold"),
-                         x = 0.5, hjust = 0.5)
+    gp = gpar(
+      fontfamily = font_family,
+      fontsize = theme$font_sizes$table,
+      col = theme$colors$footer_txt,
+      fontface = "bold"
+    ),
+    x = 0.5, hjust = 0.5
+  )
 
   # Helper: wrap grob with left/right margins to match chart margins
   wrap_with_margins <- function(g, left_pt = 16, right_pt = 16) {
@@ -2267,30 +2465,30 @@ fix_pkg <- function(x) {
   }
 
   stats_tbl_wrapped <- wrap_with_margins(stats_tbl)
-  date_lbl_wrapped  <- wrap_with_margins(date_lbl)
-  footer_wrapped    <- wrap_with_margins(footer_lbl)
-  month_wrapped     <- lapply(month_grobs, wrap_with_margins)
+  date_lbl_wrapped <- wrap_with_margins(date_lbl)
+  footer_wrapped <- wrap_with_margins(footer_lbl)
+  month_wrapped <- lapply(month_grobs, wrap_with_margins)
 
   # Estimate pixel heights for each section
   row_h_px <- max(24, round(theme$font_sizes$table * 2.2))
-  stats_body_px  <- 20 + (stats_rows + 1) * row_h_px
-  date_px        <- 24
-  cum_px         <- 420
-  per_px         <- 300
-  dd_px          <- 260
-  footer_px      <- 32
-  months_px      <- vapply(month_names, function(nm){
+  stats_body_px <- 20 + (stats_rows + 1) * row_h_px
+  date_px <- 24
+  cum_px <- 420
+  per_px <- 300
+  dd_px <- 260
+  footer_px <- 32
+  months_px <- vapply(month_names, function(nm) {
     tab <- (prep$returns_tables %||% prep$lista_tabs)[[nm]]
     20 + (NROW(tab) + 1) * row_h_px
   }, numeric(1))
 
   # Page composition with optional splitting for very tall outputs
   width_px <- 1600
-  res_dpi  <- 200
+  res_dpi <- 200
   max_page_px <- getOption("tplot.image_max_height", 8000)
 
   # Page 1 base sections
-  base_grobs   <- list(stats_tbl_wrapped, date_lbl_wrapped, p1, p2, p3)
+  base_grobs <- list(stats_tbl_wrapped, date_lbl_wrapped, p1, p2, p3)
   base_heights <- c(stats_body_px, date_px, cum_px, per_px, dd_px)
 
   # Fit as many monthly tables as possible on page 1
@@ -2301,27 +2499,31 @@ fix_pkg <- function(x) {
     take <- max(which(cs <= available_px), na.rm = TRUE)
     if (!is.finite(take)) take <- 0L
   }
-  page_grobs   <- c(base_grobs, if (take > 0) month_wrapped[seq_len(take)] else list(), list(footer_wrapped))
+  page_grobs <- c(base_grobs, if (take > 0) month_wrapped[seq_len(take)] else list(), list(footer_wrapped))
   page_heights <- c(base_heights, if (take > 0) months_px[seq_len(take)] else numeric(0), footer_px)
 
   # Function to write one page
   write_page <- function(page_grobs, page_heights, suffix) {
-    heights_units <- page_heights / 40  # convert px to relative weights
+    heights_units <- page_heights / 40 # convert px to relative weights
     composed <- gridExtra::arrangeGrob(grobs = page_grobs, ncol = 1, heights = heights_units)
     fname <- sprintf("tplot_%s_%s%s.%s", (prep$asset %||% prep$ativo), format(Sys.time(), "%Y%m%d_%H%M%S"), suffix, format)
     fpath <- file.path(od, fname)
     height_px <- max(1200, round(sum(page_heights) * 1.02))
     if (identical(format, "png")) {
       if (requireNamespace("ragg", quietly = TRUE)) {
-        ragg::agg_png(fpath, width = width_px, height = height_px, units = "px", res = res_dpi,
-                      background = theme$colors$page_bg)
+        ragg::agg_png(fpath,
+          width = width_px, height = height_px, units = "px", res = res_dpi,
+          background = theme$colors$page_bg
+        )
       } else {
         grDevices::png(fpath, width = width_px, height = height_px, res = res_dpi, bg = theme$colors$page_bg)
       }
     } else {
       if (requireNamespace("ragg", quietly = TRUE)) {
-        ragg::agg_jpeg(fpath, width = width_px, height = height_px, units = "px", res = res_dpi,
-                       quality = 0.95, background = theme$colors$page_bg)
+        ragg::agg_jpeg(fpath,
+          width = width_px, height = height_px, units = "px", res = res_dpi,
+          quality = 0.95, background = theme$colors$page_bg
+        )
       } else {
         grDevices::jpeg(fpath, width = width_px, height = height_px, quality = 95, res = res_dpi, bg = theme$colors$page_bg)
       }
@@ -2333,7 +2535,8 @@ fix_pkg <- function(x) {
     if (requireNamespace("rstudioapi", quietly = TRUE)) {
       ok <- tryCatch(isTRUE(rstudioapi::isAvailable()), error = function(e) FALSE)
       if (ok) {
-        grid::grid.newpage(); grid::grid.draw(composed)
+        grid::grid.newpage()
+        grid::grid.draw(composed)
       }
     }
 
@@ -2355,18 +2558,18 @@ fix_pkg <- function(x) {
         if (sum(cur_heights) + next_h + footer_px > max_page_px) {
           # if nothing fits yet, force at least one table on this page
           if (length(cur_heights) == 1) {
-            cur_grobs   <- c(cur_grobs, month_wrapped[idx])
+            cur_grobs <- c(cur_grobs, month_wrapped[idx])
             cur_heights <- c(cur_heights, next_h)
             idx <- idx + 1
           }
           break
         }
-        cur_grobs   <- c(cur_grobs, month_wrapped[idx])
+        cur_grobs <- c(cur_grobs, month_wrapped[idx])
         cur_heights <- c(cur_heights, next_h)
         idx <- idx + 1
       }
       # add footer to this page
-      cur_grobs   <- c(cur_grobs, list(footer_wrapped))
+      cur_grobs <- c(cur_grobs, list(footer_wrapped))
       cur_heights <- c(cur_heights, footer_px)
       paths <- c(paths, write_page(cur_grobs, cur_heights, suffix = sprintf("_p%d", length(paths) + 1)))
     }

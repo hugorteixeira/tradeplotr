@@ -2,11 +2,11 @@
 % Please edit documentation in R/helpers.R
 \name{.normalize_risk}
 \alias{.normalize_risk}
-\title{Normalize the volatility of a returns series to a target annualized risk (%).}
+\title{Normalize the volatility of a returns series to a target annualized risk in percent.}
 \usage{
 .normalize_risk(xts, risk = 10, type = c("Discrete", "Log"))
 }
 \description{
-Normalize the volatility of a returns series to a target annualized risk (%).
+Normalize the volatility of a returns series to a target annualized risk in percent.
 }
 \keyword{internal}
