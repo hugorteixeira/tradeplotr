@@ -4,7 +4,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 <!-- badges: end -->
 
-<h1 align="center">tplotforge 📊✨</h1>
+<h1 align="center">tradeplotr 📊✨</h1>
 
 <p align="center">
   <strong>Forge interactive performance charts for financial assets and backtesting</strong>
@@ -14,9 +14,9 @@
   <em>Simple. Modular. Experimental.</em>
 </p>
 
-## 🎯 What is tplotforge?
+## 🎯 What is tradeplotr?
 
-`tplotforge` is a cutting-edge R library for creating sophisticated trading performance visualizations. Forge beautiful, interactive charts for financial assets, trading strategies, and portfolio analysis with minimal code. Designed for quants and algo traders who demand both functionality and aesthetics.
+`tradeplotr` is a cutting-edge R library for creating sophisticated trading performance visualizations. Forge beautiful, interactive charts for financial assets, trading strategies, and portfolio analysis with minimal code. Designed for quants and algo traders who demand both functionality and aesthetics.
 
 Built for the **backtestforge** ecosystem, with native support for quantstrat strategies and xts time series objects.
 
@@ -70,7 +70,7 @@ my_theme <- function() {
       page_bg   = "#1E1E1E",
       chart_bg  = "#1E1E1E"
     )),
-    footer_text = "Made with tplotforge"
+    footer_text = "Made with tradeplotr"
   ))
 }
 
@@ -84,7 +84,7 @@ tplot("AAPL", theme = my_theme())
 ```r
 # Install from GitHub (development version)
 install.packages("remotes")
-remotes::install_github("hugorteixeira/tplotforge")
+remotes::install_github("hugorteixeira/tradeplotr")
 
 # Recommended for crisp images
 install.packages("ragg")
@@ -97,7 +97,7 @@ install.packages("ragg")
 Start with the `tplot()` function:
 
 ```r
-library(tplotforge)
+library(tradeplotr)
 
 # Simple chart of a ticker
 tplot("AAPL")

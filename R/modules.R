@@ -1574,7 +1574,7 @@ periodret_module <- function(ret_simple, datas, ativo, benchs, theme, sync_with_
 #' @param sync_with_candles Logical, whether to sync with the candlestick chart.
 #' @return A highchart object.
 #' @keywords internal
-drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
+drawdown_module_d <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
   pal <- theme$palette
   cl <- theme$colors
@@ -1669,7 +1669,7 @@ drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_ca
     )
   hc
 }
-drawdown_module_exp <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
+drawdown_module <- function(drawdowns, datas, ativo, benchs, theme, sync_with_candles = FALSE) {
   comeca <- Sys.time()
   pal <- theme$palette
   cl <- theme$colors
