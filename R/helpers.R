@@ -974,9 +974,18 @@ fix_pkg <- function(x) {
     out
   }
 
-  find_col_idx <- function(cols, base_name) {
+  find_col_idx_old <- function(cols, base_name) {
     idx <- grep(paste0("(^|\\.)", base_name, "$"), cols, ignore.case = TRUE)
     if (length(idx) == 0) NA_integer_ else idx[1]
+  }
+  find_col_idx <- function(cols, base_names) {
+    for (nm in base_names) {
+      idx <- grep(paste0("^", nm, "$"), cols, ignore.case = TRUE)
+      if (length(idx) > 0) {
+        return(idx[1])
+      }
+    }
+    NA_integer_
   }
 
   for (i in seq_along(data_xts)) {
