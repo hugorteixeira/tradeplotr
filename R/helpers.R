@@ -666,7 +666,8 @@
     return(FALSE)
   }
   cols <- tolower(colnames(mkt))
-  all(c("pu_o", "tickvalue", "ticksize") %in% cols)
+  all(c("tickvalue", "ticksize") %in% cols) &&
+    (any(c("pu_o", "pu_open") %in% cols))
 }
 
 .get_di_tick_size <- function(mm, basis_date, rule_change_date = as.Date("2025-08-01")) {
@@ -991,7 +992,8 @@ fix_pkg <- function(x) {
 
     cols <- colnames(item)
     idx_close <- find_col_idx(cols, "Close")
-    idx_pu_close <- find_col_idx(cols, "PU_c")
+    # Se a função aceita um vetor de possíveis nomes
+    idx_pu_close <- find_col_idx(cols, c("PU_c", "PU_close"))
     idx_adjusted <- find_col_idx(cols, "Adjusted")
     idx_discrete <- find_col_idx(cols, "Discrete")
 

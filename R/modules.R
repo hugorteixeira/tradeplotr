@@ -566,7 +566,7 @@ candles_module <- function(mktdata, txns, theme, asset_name = NULL) {
 
   di_flag <- .isDI(std)
   maturity_date <- attr(std, "maturity")
-  if (!is.null(maturity_date)) cat(" -> Futures maturity date is", maturity_date, ".\n")
+  if (!is.null(maturity_date)) cat(" -> Futures maturity date is", as.Date(maturity_date), ".\n")
 
   pal <- theme$palette
   corx <- pal[1]
