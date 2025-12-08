@@ -1002,7 +1002,7 @@ fix_pkg <- function(x) {
     cols <- colnames(item)
     idx_close <- find_col_idx(cols, "Close")
     # Se a função aceita um vetor de possíveis nomes
-    idx_pu_close <- find_col_idx(cols, c("PU_c", "PU_close"))
+    idx_pu_close <- find_col_idx(cols, c("PU_close", "PU_c"))
     idx_adjusted <- find_col_idx(cols, "Adjusted")
     idx_discrete <- find_col_idx(cols, "Discrete")
 
