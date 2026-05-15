@@ -18,7 +18,7 @@
 
 `tradeplotr` is a cutting-edge R library for creating sophisticated trading performance visualizations. Forge beautiful, interactive charts for financial assets, trading strategies, and portfolio analysis with minimal code. Designed for quants and algo traders who demand both functionality and aesthetics.
 
-Built for the **backtestforge** ecosystem, with native support for quantstrat strategies and xts time series objects.
+Built for the **backtestforge** ecosystem, with native support for quantstrat strategies, native backtest objects, and xts time series objects.
 
 > ⚠️ **Experimental**: This package is in active development. Expect bugs and API changes.
 
@@ -29,6 +29,9 @@ Built for the **backtestforge** ecosystem, with native support for quantstrat st
 - **JSON export**: Core data export for custom processing
 - **Theme engine**: Light, dark, and custom themes with full styling control
 - **Quantstrat native**: Direct plotting of trading strategy results (equity curves, trade markers, etc.)
+- **Native backtest input**: Pass a backtest object directly when it contains `rets$Discrete` or `rets$Log`
+- **Backtest diagnostics**: Optional costs/friction and trade-quality modules when the object carries trade details
+- **Rolling correlation**: Compare how multiple assets or backtests correlate through time
 - **backtestforge integration**: Part of a complete R-based backtesting ecosystem
 - **xts optimized**: Built from the ground up for xts time series objects
 - **Modular architecture**: Highly extensible chart components
@@ -112,6 +115,9 @@ cat("Saved:", path_html, "\n")
 # Quantstrat strategy visualization
 tplot("my_portfolio_name", format = "viewer")  # Automatically detects strategy data
 
+# Native backtest object with $rets
+tplot(tick_a, format = "viewer")
+
 # With custom theme
 tplot("AAPL", theme = dark_theme())
 ```
@@ -123,6 +129,43 @@ tplot("AAPL", theme = dark_theme())
 | `viewer`  | Interactive view in RStudio/browser      | Opens in viewer           |
 | `html`    | Self-contained HTML file                 | Returns file path         |
 | `json`    | Core data as JSON                        | Returns JSON data         |
+| `png`     | Static image report                      | Returns file path(s)      |
+| `jpg`     | Static image report                      | Returns file path(s)      |
+
+### Internal Organization
+
+The public API is intentionally small: `tplot()` and the theme helpers. Internally, the code is split by responsibility:
+
+- input/source detection: `R/input-sources.R`
+- return preparation and risk normalization: `R/data-prepare.R`, `R/returns-risk.R`
+- report assembly: `R/tplot-prepare.R`
+- renderers: `R/render.R`, `R/json-utils.R`
+- chart modules: `R/modules-tables.R`, `R/modules-market.R`, `R/modules-performance.R`
+- themes: `R/themes.R`
+
+### Native Backtest Objects
+
+`tplot()` can read a backtest-like list directly. It looks for returns in this order:
+
+1. `obj$rets`
+2. `obj$rets_acct`
+3. `obj$raw_rets`
+
+Inside the chosen return object, `Discrete` is preferred. If only `Log` exists, it is converted to discrete returns with `exp(Log) - 1`. When the object also includes `symbol`, `stats`, `trades`, `mktdata`, or `info_blocks`, tradeplotr uses those fields for the asset label, candle trade markers, position chart, and a small hover info marker in the stats table.
+
+Backtest objects can also unlock extra modules:
+
+- `costs`: summarizes fees, slippage, total friction, net/gross P&L, and cost impact.
+- `trade_quality`: summarizes win rate, profit factor, R multiples, MFE/MAE, and plots MFE vs final R per trade when excursions are available.
+- `rolling_corr`: plots rolling pairwise correlation for multi-series reports. Series with different native frequencies are compared after the normal return-preparation step, which aggregates intraday data to a common compatible period.
+
+For large candle datasets, the HTML renderer caps chart payloads before sending them to Highcharts. You can tune this with:
+
+```r
+options(tplot.max_candles = 6000)
+options(tplot.max_volume_points = 6000)
+options(tplot.max_position_points = 6000)
+```
 
 ### 🔄 Ecosystem Integration
 

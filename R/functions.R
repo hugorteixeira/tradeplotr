@@ -10,8 +10,9 @@ NULL
 #' comparing them against benchmarks. The output can be an interactive viewer, an HTML
 #' file, a JSON string, or a static image (PNG/JPG).
 #'
-#' @param ... Ticker symbols (e.g., "PETR4.SA") or xts/data.frame objects to be analyzed.
-#' The first item is treated as the main asset, and the rest as benchmarks.
+#' @param ... Ticker symbols (e.g., "PETR4.SA"), xts/data.frame objects, or
+#' backtest-like lists with a `rets` element. The first item is treated as the
+#' main asset, and the rest as benchmarks.
 #' @param init Start date for the analysis in "YYYY-MM-DD" format.
 #' @param finit End date for the analysis in "YYYY-MM-DD" format.
 #' @param rf_rate The risk-free rate for calculating metrics like the Sharpe Ratio.
@@ -36,8 +37,8 @@ tplot <- function(...,
                   format = c("viewer", "html", "json", "png", "jpg"),
                   output_dir = "tplots",
                   modules = c(
-                    "stats", "candles", "volume", "position", "cumulative", "rolling",
-                    "period", "drawdowns", "table", "footer"
+                    "stats", "candles", "volume", "position", "cumulative", "rolling", "rolling_corr",
+                    "costs", "trade_quality", "period", "drawdowns", "table", "footer"
                   ),
                   theme = default_theme(),
                   verbose = getOption("tplot.verbose", FALSE)) {
@@ -47,7 +48,7 @@ tplot <- function(...,
   modules <- match.arg(modules,
     several.ok = TRUE,
     choices = c(
-      "stats", "candles", "volume", "position", "cumulative", "rolling",
+      "stats", "costs", "trade_quality", "candles", "volume", "position", "cumulative", "rolling", "rolling_corr",
       "period", "drawdowns", "table", "footer"
     )
   )
@@ -210,7 +211,7 @@ tplot <- function(...,
   preparo <- Sys.time()
   mods_avail <- .available_modules(prep)
   if (!user_specified_modules) {
-    priority <- c("stats", "candles", "volume", "position", "cumulative", "rolling", "period", "drawdowns", "table", "footer")
+    priority <- c("stats", "candles", "volume", "position", "cumulative", "rolling", "rolling_corr", "costs", "trade_quality", "period", "drawdowns", "table", "footer")
     mods_final <- intersect(priority, mods_avail)
   } else {
     missing_req <- setdiff(modules, mods_avail)

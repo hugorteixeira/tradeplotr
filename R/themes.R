@@ -1,3 +1,23 @@
+#' @keywords internal
+.compact_chart_height <- function(theme) {
+  theme$compact_charts$height %||% theme$position$height %||% 130
+}
+
+#' @keywords internal
+.compact_chart_margin <- function(theme) {
+  theme$compact_charts$margin %||% theme$hc_margin
+}
+
+#' @keywords internal
+.compact_chart_spacing <- function(theme) {
+  theme$compact_charts$spacing %||% theme$hc_spacing
+}
+
+#' @keywords internal
+.module_gap <- function(theme) {
+  theme$compact_charts$module_gap %||% 8
+}
+
 #' @title Default Theme for tplot Charts
 #' @description Returns a list with color and font settings for the light theme.
 #' @return A list of theme settings.
@@ -16,6 +36,12 @@ default_theme <- function() {
     ),
     hc_margin = c(15, 0, 20, 75),
     hc_spacing = c(0, 0, 0, 0),
+    compact_charts = list(
+      height = 150,
+      margin = c(15, 0, 36, 75),
+      spacing = c(0, 0, 0, 0),
+      module_gap = 8
+    ),
     candles = list(
       up_color = "#1a9f4b",
       down_color = "#cc3d3d",
@@ -26,22 +52,31 @@ default_theme <- function() {
       grouping = FALSE
     ),
     volume = list(
-      height = 70
+      height = 150
     ),
     position = list(
       height = 150
     ),
+    costs = list(
+      height = 150
+    ),
+    trade_quality = list(
+      height = 150
+    ),
     cumret = list(
-      height = 200
+      height = 150
     ),
     rollingret = list(
-      height = 100
+      height = 150
+    ),
+    rolling_corr = list(
+      height = 150
     ),
     periodret = list(
-      height = 100
+      height = 150
     ),
     drawdown = list(
-      height = 100
+      height = 150
     ),
     ft_font_size = "12px",
     ft_margin = "5px",
@@ -68,6 +103,12 @@ dark_theme <- function() {
     ),
     hc_margin = c(15, 0, 20, 65),
     hc_spacing = c(5, 0, 0, 0),
+    compact_charts = list(
+      height = 130,
+      margin = c(15, 0, 36, 65),
+      spacing = c(5, 0, 0, 0),
+      module_gap = 8
+    ),
     candles = list(
       up_color = "#00d175",
       down_color = "#ff4d4d",
@@ -83,10 +124,19 @@ dark_theme <- function() {
     position = list(
       height = 130
     ),
+    costs = list(
+      height = 130
+    ),
+    trade_quality = list(
+      height = 130
+    ),
     cumret = list(
       height = 130
     ),
     rollingret = list(
+      height = 130
+    ),
+    rolling_corr = list(
       height = 130
     ),
     periodret = list(
@@ -118,6 +168,12 @@ fancy_theme <- function() {
     ),
     hc_margin = c(20, 10, 20, 80),
     hc_spacing = c(8, 4, 0, 4),
+    compact_charts = list(
+      height = 130,
+      margin = c(20, 10, 36, 80),
+      spacing = c(8, 4, 0, 4),
+      module_gap = 8
+    ),
     candles = list(
       up_color = "#20BF55",
       down_color = "#F54748",
@@ -133,10 +189,19 @@ fancy_theme <- function() {
     position = list(
       height = 130
     ),
+    costs = list(
+      height = 130
+    ),
+    trade_quality = list(
+      height = 130
+    ),
     cumret = list(
       height = 130
     ),
     rollingret = list(
+      height = 130
+    ),
+    rolling_corr = list(
       height = 130
     ),
     periodret = list(
@@ -168,6 +233,12 @@ pro_theme <- function() {
     ),
     hc_margin = c(18, 8, 18, 70),
     hc_spacing = c(6, 4, 0, 4),
+    compact_charts = list(
+      height = 130,
+      margin = c(18, 8, 36, 70),
+      spacing = c(6, 4, 0, 4),
+      module_gap = 8
+    ),
     candles = list(
       up_color = "#27AE60",
       down_color = "#EB5757",
@@ -183,10 +254,19 @@ pro_theme <- function() {
     position = list(
       height = 130
     ),
+    costs = list(
+      height = 130
+    ),
+    trade_quality = list(
+      height = 130
+    ),
     cumret = list(
       height = 130
     ),
     rollingret = list(
+      height = 130
+    ),
+    rolling_corr = list(
       height = 130
     ),
     periodret = list(
@@ -218,6 +298,12 @@ hacker_theme <- function() {
     ),
     hc_margin = c(15, 8, 20, 70),
     hc_spacing = c(6, 2, 0, 2),
+    compact_charts = list(
+      height = 130,
+      margin = c(15, 8, 36, 70),
+      spacing = c(6, 2, 0, 2),
+      module_gap = 8
+    ),
     candles = list(
       up_color = "#33FF99",
       down_color = "#FF6666",
@@ -233,10 +319,19 @@ hacker_theme <- function() {
     position = list(
       height = 130
     ),
+    costs = list(
+      height = 130
+    ),
+    trade_quality = list(
+      height = 130
+    ),
     cumret = list(
       height = 130
     ),
     rollingret = list(
+      height = 130
+    ),
+    rolling_corr = list(
       height = 130
     ),
     periodret = list(

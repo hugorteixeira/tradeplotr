@@ -14,14 +14,15 @@ tplot(
   format = c("viewer", "html", "json", "png", "jpg"),
   output_dir = "tplots",
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
-    "period", "drawdowns", "table", "footer"),
+    "rolling_corr", "costs", "trade_quality", "period", "drawdowns", "table", "footer"),
   theme = default_theme(),
   verbose = getOption("tplot.verbose", FALSE)
 )
 }
 \arguments{
-\item{...}{Ticker symbols (e.g., "PETR4.SA") or xts/data.frame objects to be analyzed.
-The first item is treated as the main asset, and the rest as benchmarks.}
+\item{...}{Ticker symbols (e.g., "PETR4.SA"), xts/data.frame objects, or
+backtest-like lists with a `rets` element. The first item is treated as the
+main asset, and the rest as benchmarks.}
 
 \item{init}{Start date for the analysis in "YYYY-MM-DD" format.}
 

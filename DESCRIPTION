@@ -7,10 +7,11 @@ Authors@R: person(
     family = "Rzepian Teixeira",
     email = "hugorteixeira@senhormercado.com.br",
     role = c("aut", "cre"))
+Author: Hugo Rzepian Teixeira [aut, cre]
+Maintainer: Hugo Rzepian Teixeira <hugorteixeira@senhormercado.com.br>
 Description: R library for easy, informative trading/backtesting charts in HTML (self-embed option, JPG,  PNG). Custom themes. Integrates with quantstrat/blotter for strategy analysis. Visualize equity curves, market patterns, and performance metrics efficiently.
 Encoding: UTF-8
-LazyData: true
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 License: GPL (>= 3)
 Imports: 
     xts,
@@ -18,8 +19,6 @@ Imports:
     PerformanceAnalytics,
     quantmod,
     lubridate,
-    rstudioapi,
-    systemfonts,
     highcharter,
     htmltools,
     bizdays,
@@ -27,11 +26,11 @@ Imports:
     jsonlite,
     magrittr,
     rlang,
-    shiny,
     ggplot2,
     tidyr,
     scales,
     gridExtra
 Suggests: 
     ragg,
-    conflicted
+    rstudioapi,
+    systemfonts

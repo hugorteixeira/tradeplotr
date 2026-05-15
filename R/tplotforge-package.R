@@ -15,7 +15,6 @@
 #' @importFrom magrittr %>%
 #' @importFrom rlang .data
 #' @importFrom scales label_number
-#' @importFrom shiny isolate
 #' @importFrom stats na.omit sd
 #' @importFrom tidyr pivot_longer
 #' @importFrom xts apply.monthly first last xts
