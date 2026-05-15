@@ -17,7 +17,14 @@ NULL
 #' @param finit End date for the analysis in "YYYY-MM-DD" format.
 #' @param rf_rate The risk-free rate for calculating metrics like the Sharpe Ratio.
 #' @param geometric Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.
-#' @param normalize_risk Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.
+#' @param normalize_risk Positive numeric annualized volatility target, in percent,
+#' used to scale regular ticker series before plotting. Use `NULL` to skip.
+#' @param group_lines Optional group-return line to add. Use `"all"` to combine all
+#' selected tickers, a numeric vector of 1-based ticker positions to combine a
+#' subset, or `NULL` to skip. Repeated positions act as repeated weights.
+#' @param normalize_group_risk Positive numeric annualized volatility target, in
+#' percent, used to scale the grouped line created by `group_lines`. Use `NULL`
+#' to skip group risk scaling.
 #' @param format The output format: "viewer", "html", "json", "png", or "jpg".
 #' @param output_dir The directory where output files (HTML, PNG, etc.) will be saved.
 #' @param modules A character vector of modules to include in the report.
@@ -34,6 +41,8 @@ tplot <- function(...,
                   rf_rate = NULL,
                   geometric = TRUE,
                   normalize_risk = NULL,
+                  group_lines = NULL,
+                  normalize_group_risk = NULL,
                   format = c("viewer", "html", "json", "png", "jpg"),
                   output_dir = "tplots",
                   modules = c(
@@ -205,6 +214,8 @@ tplot <- function(...,
 
   prep <- .tplot_prepare(ativo_spec, benchs_spec, init, finit, rf_rate, geometric,
     normalize_risk = normalize_risk,
+    group_lines = group_lines,
+    normalize_group_risk = normalize_group_risk,
     ativo_name = ativo_label,
     verbose = verbose
   )

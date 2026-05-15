@@ -5,11 +5,18 @@
 #' @param finit End date.
 #' @param rf_rate The risk-free rate.
 #' @param geometric Logical, for geometric returns.
+#' @param normalize_risk Optional annualized volatility target for regular ticker
+#' series.
+#' @param group_lines Optional group-return line selector.
+#' @param normalize_group_risk Optional annualized volatility target for the
+#' grouped return line.
 #' @param ativo_name An explicit name for the main asset.
 #' @return A large list containing all data and metrics prepared for the modules.
 #' @keywords internal
 .tplot_prepare <- function(ativo, benchs, init, finit, rf_rate, geometric = TRUE,
                            normalize_risk = NULL,
+                           group_lines = NULL,
+                           normalize_group_risk = NULL,
                            ativo_name = NULL,
                            verbose = getOption("tplot.verbose", FALSE)) {
   vmsg <- function(...) {
@@ -574,23 +581,33 @@
         base_xts <- xts::xts(series_orig[, 1], order.by = index(series_orig))
         colnames(base_xts) <- "Discrete"
         scaled <- tryCatch(
-          .normalize_risk(base_xts, risk = risk_target, type = "Discrete"),
+          suppressWarnings(.normalize_risk(base_xts, risk = risk_target, type = "Discrete")),
           error = function(e) {
             warning(sprintf("Could not normalize risk for '%s': %s", col, conditionMessage(e)))
             NULL
           }
         )
         if (!is.null(scaled) && xts::is.xts(scaled)) {
-          scaled <- scaled[index(base_xts)]
-          colnames(scaled) <- col
-          normalized_cols[[col]] <- scaled
+          scaled_values <- as.numeric(scaled)
+          if (length(scaled_values) != NROW(carteira_full)) {
+            warning(sprintf(
+              "Could not normalize risk for '%s': normalized series length (%d) differs from prepared series length (%d).",
+              col,
+              length(scaled_values),
+              NROW(carteira_full)
+            ))
+            next
+          }
+          normalized_cols[[col]] <- scaled_values
         }
       }
       if (length(normalized_cols) > 0) {
         for (col in names(normalized_cols)) {
           carteira_full[, col] <- normalized_cols[[col]]
-          if (col %in% colnames(dados_trat)) {
-            dados_trat[, col] <- normalized_cols[[col]][index(dados_trat)]
+          if (col %in% colnames(dados_trat) &&
+            NROW(dados_trat) == length(normalized_cols[[col]]) &&
+            identical(index(dados_trat), index(carteira_full))) {
+            dados_trat[, col] <- normalized_cols[[col]]
           }
         }
         risk_applied <- risk_target
@@ -598,6 +615,19 @@
       }
     }
   }
+
+  group_risk_applied <- NULL
+  group_line <- .build_group_line(carteira_full, group_lines, normalize_group_risk = normalize_group_risk)
+  if (!is.null(group_line)) {
+    group_name <- colnames(group_line)[1]
+    group_risk_applied <- attr(group_line, "normalize_group_risk", exact = TRUE)
+    carteira_full <- merge(carteira_full, group_line, join = "left")
+    colnames(carteira_full)[NCOL(carteira_full)] <- group_name
+    keep_cols <- c(keep_cols, group_name)
+    benchs_labels <- c(benchs_labels, group_name)
+    vmsg(sprintf("[.tplot_prepare] Added grouped return line: %s", group_name))
+  }
+
   # Keep only rows where all selected series have data for fair charting/metrics
   complete_rows <- apply(!is.na(carteira_full), 1, all)
   if (!any(complete_rows)) {
@@ -752,6 +782,7 @@
   )
 
   if (!is.null(risk_applied)) resultado$normalize_risk <- risk_applied
+  if (!is.null(group_risk_applied)) resultado$normalize_group_risk <- group_risk_applied
 
   # 11) Conditionally attach backtest extras
   if (!is.null(mktdata)) resultado$mktdata <- mktdata

@@ -161,6 +161,107 @@
   out
 }
 
+#' Build a synthetic grouped return line from selected columns.
+#' @param returns An xts object with discrete returns.
+#' @param group_lines NULL, "all", or numeric 1-based column positions.
+#' @param normalize_group_risk Optional annualized volatility target in percent
+#' for the grouped output line.
+#' @param label Output column label.
+#' @return An xts object with one grouped return column, or NULL.
+#' @keywords internal
+.build_group_line <- function(returns, group_lines = NULL, normalize_group_risk = NULL, label = "Grupo de Tickers") {
+  if (is.null(group_lines)) {
+    return(NULL)
+  }
+  if (!.is_xts(returns) || NCOL(returns) < 1L || NROW(returns) < 2L) {
+    stop("group_lines requires at least one prepared return series.")
+  }
+
+  if (is.character(group_lines) && length(group_lines) == 1L && identical(tolower(group_lines), "all")) {
+    idx <- seq_len(NCOL(returns))
+  } else if (is.numeric(group_lines) || is.integer(group_lines)) {
+    idx <- suppressWarnings(as.integer(group_lines))
+    if (length(idx) == 0L) {
+      return(NULL)
+    }
+    if (any(!is.finite(group_lines)) || any(is.na(idx)) || any(idx != group_lines)) {
+      stop("group_lines numeric values must be finite whole-number ticker positions.")
+    }
+  } else {
+    stop("group_lines must be NULL, \"all\", or a numeric vector of 1-based ticker positions.")
+  }
+
+  if (any(idx < 1L | idx > NCOL(returns))) {
+    stop(sprintf(
+      "group_lines positions must be between 1 and %d. Invalid: %s",
+      NCOL(returns),
+      paste(unique(idx[idx < 1L | idx > NCOL(returns)]), collapse = ", ")
+    ))
+  }
+
+  group_risk_target <- NULL
+  if (!is.null(normalize_group_risk)) {
+    risk_target <- suppressWarnings(as.numeric(normalize_group_risk[1]))
+    if (!is.finite(risk_target) || risk_target <= 0) {
+      warning("'normalize_group_risk' must be a positive numeric value. Group line will not be risk-normalized.")
+    } else {
+      group_risk_target <- risk_target
+    }
+  }
+
+  log_returns <- vector("list", length(idx))
+  for (i in seq_along(idx)) {
+    col_i <- idx[i]
+    disc <- as.numeric(returns[, col_i])
+    if (any(disc <= -1, na.rm = TRUE)) {
+      stop(sprintf(
+        "Could not build group_lines from ticker position %d (%s): discrete returns contain values <= -1.",
+        col_i,
+        colnames(returns)[col_i]
+      ), call. = FALSE)
+    }
+    logs <- xts::xts(log1p(disc), order.by = index(returns))
+    colnames(logs) <- colnames(returns)[col_i]
+    log_returns[[i]] <- logs
+  }
+
+  log_mat <- if (length(log_returns) == 1L) {
+    log_returns[[1]]
+  } else {
+    Reduce(function(a, b) merge(a, b, join = "left"), log_returns)
+  }
+  avg_log <- rowSums(log_mat, na.rm = FALSE) / length(idx)
+  avg_log <- xts::xts(as.numeric(avg_log), order.by = index(log_mat))
+  colnames(avg_log) <- "Log"
+  if (is.null(group_risk_target)) {
+    grouped <- xts::xts(exp(as.numeric(avg_log)) - 1, order.by = index(avg_log))
+  } else {
+    grouped <- tryCatch(
+      suppressWarnings(.normalize_risk(avg_log, risk = group_risk_target, type = "Discrete")),
+      error = function(e) {
+        stop(sprintf(
+          "Could not normalize the grouped return line to %.2f%% annualized volatility: %s",
+          group_risk_target,
+          conditionMessage(e)
+        ), call. = FALSE)
+      }
+    )
+    attr(grouped, "normalize_group_risk") <- group_risk_target
+  }
+
+  out_label <- label
+  existing <- colnames(returns)
+  if (out_label %in% existing) {
+    n <- 2L
+    while (paste0(label, "_", n) %in% existing) {
+      n <- n + 1L
+    }
+    out_label <- paste0(label, "_", n)
+  }
+  colnames(grouped) <- out_label
+  grouped
+}
+
 #' Determine which modules can be rendered based on prepared data
 #' @param prep The list of data prepared by .tplot_prepare.
 #' @return A character vector with the names of available modules.

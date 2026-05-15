@@ -12,6 +12,8 @@
   rf_rate,
   geometric = TRUE,
   normalize_risk = NULL,
+  group_lines = NULL,
+  normalize_group_risk = NULL,
   ativo_name = NULL,
   verbose = getOption("tplot.verbose", FALSE)
 )
@@ -28,6 +30,14 @@
 \item{rf_rate}{The risk-free rate.}
 
 \item{geometric}{Logical, for geometric returns.}
+
+\item{normalize_risk}{Optional annualized volatility target for regular ticker
+series.}
+
+\item{group_lines}{Optional group-return line selector.}
+
+\item{normalize_group_risk}{Optional annualized volatility target for the
+grouped return line.}
 
 \item{ativo_name}{An explicit name for the main asset.}
 }

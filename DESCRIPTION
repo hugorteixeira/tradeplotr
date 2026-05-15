@@ -9,7 +9,12 @@ Authors@R: person(
     role = c("aut", "cre"))
 Author: Hugo Rzepian Teixeira [aut, cre]
 Maintainer: Hugo Rzepian Teixeira <hugorteixeira@senhormercado.com.br>
-Description: R library for easy, informative trading/backtesting charts in HTML (self-embed option, JPG,  PNG). Custom themes. Integrates with quantstrat/blotter for strategy analysis. Visualize equity curves, market patterns, and performance metrics efficiently.
+Description: R library for interactive trading and backtesting reports in HTML,
+    JSON, PNG, and JPG formats. Supports xts series, quantstrat portfolios, and
+    native backtest objects with return, trade, cost, position, and market data.
+    Includes performance tables, cumulative and rolling returns, drawdowns,
+    rolling correlations, grouped return lines, risk normalization, candlestick
+    charts, trade markers, and custom themes.
 Encoding: UTF-8
 RoxygenNote: 7.3.3
 License: GPL (>= 3)

@@ -2,17 +2,17 @@
 % Please edit documentation in R/input-sources.R
 \name{.bt_first_text}
 \alias{.bt_first_text}
-\title{Try to interpret a list as a backtest-like object}
+\title{Return the first non-empty text value}
 \usage{
 .bt_first_text(x)
 }
 \arguments{
-\item{obj}{The list to check.}
+\item{x}{A vector-like object.}
 }
 \value{
-A list with mktdata, trades, and stats, or NULL.
+A character scalar, or NULL.
 }
 \description{
-Try to interpret a list as a backtest-like object
+Return the first non-empty text value
 }
 \keyword{internal}

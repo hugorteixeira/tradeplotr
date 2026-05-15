@@ -11,6 +11,8 @@ tplot(
   rf_rate = NULL,
   geometric = TRUE,
   normalize_risk = NULL,
+  group_lines = NULL,
+  normalize_group_risk = NULL,
   format = c("viewer", "html", "json", "png", "jpg"),
   output_dir = "tplots",
   modules = c("stats", "candles", "volume", "position", "cumulative", "rolling",
@@ -32,7 +34,16 @@ main asset, and the rest as benchmarks.}
 
 \item{geometric}{Logical. If `TRUE`, calculates geometric returns. If `FALSE`, arithmetic.}
 
-\item{normalize_risk}{Target annualized volatility used to scale all series before plotting. Use `NULL` to skip.}
+\item{normalize_risk}{Positive numeric annualized volatility target, in percent,
+used to scale regular ticker series before plotting. Use `NULL` to skip.}
+
+\item{group_lines}{Optional group-return line to add. Use `"all"` to combine all
+selected tickers, a numeric vector of 1-based ticker positions to combine a
+subset, or `NULL` to skip. Repeated positions act as repeated weights.}
+
+\item{normalize_group_risk}{Positive numeric annualized volatility target, in
+percent, used to scale the grouped line created by `group_lines`. Use `NULL`
+to skip group risk scaling.}
 
 \item{format}{The output format: "viewer", "html", "json", "png", or "jpg".}
 

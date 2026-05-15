@@ -6,7 +6,7 @@
 \alias{tradeplotr-package}
 \title{tradeplotr: Generate Customizable Interactive Performance Reports for Financial Assets}
 \description{
-R library for easy, informative trading/backtesting charts in HTML (self-embed option, JPG, PNG). Custom themes. Integrates with quantstrat/blotter for strategy analysis. Visualize equity curves, market patterns, and performance metrics efficiently.
+R library for interactive trading and backtesting reports in HTML, JSON, PNG, and JPG formats. Supports xts series, quantstrat portfolios, and native backtest objects with return, trade, cost, position, and market data. Includes performance tables, cumulative and rolling returns, drawdowns, rolling correlations, grouped return lines, risk normalization, candlestick charts, trade markers, and custom themes.
 }
 \author{
 \strong{Maintainer}: Hugo Rzepian Teixeira \email{hugorteixeira@senhormercado.com.br}

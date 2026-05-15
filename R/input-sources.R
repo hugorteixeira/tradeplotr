@@ -172,9 +172,9 @@
   ohlc
 }
 
-#' Try to interpret a list as a backtest-like object
-#' @param obj The list to check.
-#' @return A list with mktdata, trades, and stats, or NULL.
+#' Return the first non-empty text value
+#' @param x A vector-like object.
+#' @return A character scalar, or NULL.
 #' @keywords internal
 .bt_first_text <- function(x) {
   if (is.null(x)) {

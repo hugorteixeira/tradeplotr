@@ -118,6 +118,18 @@ tplot("my_portfolio_name", format = "viewer")  # Automatically detects strategy 
 # Native backtest object with $rets
 tplot(tick_a, format = "viewer")
 
+# Add a grouped line from all selected tickers
+tplot("AAPL", "SPY", "QQQ", group_lines = "all")
+
+# Group only selected ticker positions; repeated positions act as weights
+tplot("AAPL", "SPY", "QQQ", "IWM", group_lines = c(2, 2, 4))
+
+# Risk-normalize regular tickers only
+tplot("AAPL", "SPY", "QQQ", normalize_risk = 10)
+
+# Keep regular tickers raw, but risk-normalize the grouped line to 10% vol
+tplot("AAPL", "SPY", "QQQ", group_lines = "all", normalize_group_risk = 10)
+
 # With custom theme
 tplot("AAPL", theme = dark_theme())
 ```
@@ -158,6 +170,28 @@ Backtest objects can also unlock extra modules:
 - `costs`: summarizes fees, slippage, total friction, net/gross P&L, and cost impact.
 - `trade_quality`: summarizes win rate, profit factor, R multiples, MFE/MAE, and plots MFE vs final R per trade when excursions are available.
 - `rolling_corr`: plots rolling pairwise correlation for multi-series reports. Series with different native frequencies are compared after the normal return-preparation step, which aggregates intraday data to a common compatible period.
+
+### Risk Normalization and Grouped Lines
+
+`normalize_risk` scales only the regular ticker lines. Use it when you want all
+input series displayed at the same annualized volatility target:
+
+```r
+tplot("AAPL", "SPY", "QQQ", normalize_risk = 10)
+```
+
+`group_lines` can add a synthetic return line called `Grupo de Tickers`. It
+averages the selected series in log-return space and adds the result as an extra
+series. Use `group_lines = "all"` for all tickers, or a numeric vector of
+1-based ticker positions for a subset. Duplicates are preserved, so
+`group_lines = c(2, 2, 6)` gives ticker 2 twice the weight of ticker 6.
+
+`normalize_group_risk` scales only the grouped line. This lets you keep regular
+tickers raw while making `Grupo de Tickers` comparable at a chosen risk target:
+
+```r
+tplot("AAPL", "SPY", "QQQ", group_lines = "all", normalize_group_risk = 10)
+```
 
 For large candle datasets, the HTML renderer caps chart payloads before sending them to Highcharts. You can tune this with:
 
