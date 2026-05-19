@@ -1,3 +1,11 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
+^\.RData$
+^\.Rhistory$
+^\.agents$
+^\.codex$
+^trash\.R$
+^trash-.*\.R$
+^tradeplotr\.Rcheck$
+^tradeplotr_.*\.tar\.gz$
