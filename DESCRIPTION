@@ -34,7 +34,8 @@ Imports:
     ggplot2,
     tidyr,
     scales,
-    gridExtra
+    gridExtra,
+    positionsizer
 Suggests: 
     ragg,
     rstudioapi,
