@@ -33,6 +33,8 @@ Built for the **backtestforge** ecosystem, with native support for quantstrat st
 - **Backtest diagnostics**: Optional costs/friction and trade-quality modules when the object carries trade details
 - **Rolling correlation**: Compare how multiple assets or backtests correlate through time
 - **backtestforge integration**: Part of a complete R-based backtesting ecosystem
+- **DI futures consistency**: DI rate/PU conversions delegate to `positionsizer`
+  so charts use the same formula as backtests and B3 futures helpers
 - **xts optimized**: Built from the ground up for xts time series objects
 - **Modular architecture**: Highly extensible chart components
 
@@ -40,6 +42,10 @@ Built for the **backtestforge** ecosystem, with native support for quantstrat st
 
 ### 📉 Quantstrat Strategy Charts
 Visualize complete trading strategies with equity curves, trade markers, position sizing, and performance metrics. Native support for quantstrat portfolios with automatic detection of trades, positions, and performance data.
+
+For Brazilian DI futures, `tradeplotr` may need to translate PU prices back to
+annualized rates for display. That conversion is intentionally delegated to
+`positionsizer`; the plotting layer should not keep its own DI formula.
 
 ### 🔄 Rolling Returns & Risk Metrics
 Analyze performance consistency with dynamic rolling windows. Visualize volatility, Sharpe ratios, and other risk-adjusted metrics across time horizons.
